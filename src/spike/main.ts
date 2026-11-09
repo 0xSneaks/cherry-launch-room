@@ -12,7 +12,7 @@ import { explainLaunchError } from '../launch/errors';
 import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { VARIANTS, buildVariant, fitsLegacy, serializedSize, type Variant } from './build';
 import { SPIKE_COIN } from './coin';
-import { APP_FEE_WALLET, SPIKE_LABEL, SPIKE_OWNER_WALLETS } from './constants';
+import { APP_FEE_WALLET, SPIKE_LABEL, SPIKE_OWNER_WALLETS, SPIKE_TEST_RECIPIENT } from './constants';
 import { isKill, refusalFields, toMarkdown, type SpikeRow } from './result';
 import { isOwner, sessionFromResponse, short, type SessionState } from './session';
 
@@ -109,9 +109,10 @@ async function run(variant: Variant | EngineVariant) {
   try {
     let appFeeRecipient = new PublicKey(($('feeRecipient') as HTMLInputElement).value.trim() || APP_FEE_WALLET);
     if (appFeeRecipient.equals(wallet)) {
-      // Pump refuses a split with the same wallet twice. Sign-only test: nothing is sent, so a throwaway works.
-      appFeeRecipient = Keypair.generate().publicKey;
-      log(`${variant}: 5% recipient = your wallet, so this test uses a throwaway ${short(appFeeRecipient.toBase58())} (nothing is sent).`);
+      // Pump refuses a split with the same wallet twice: use the owner's second wallet (else a throwaway). Nothing is sent.
+      const second = new PublicKey(SPIKE_TEST_RECIPIENT);
+      appFeeRecipient = second.equals(wallet) ? Keypair.generate().publicKey : second;
+      log(`${variant}: 5% recipient = your wallet, so this test uses ${short(appFeeRecipient.toBase58())} (nothing is sent).`);
     }
     let txs: Transaction[];
     if (!spec) {

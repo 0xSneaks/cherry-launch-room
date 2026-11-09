@@ -16,7 +16,7 @@ import {
   type Variant,
 } from './build';
 import { SPIKE_COIN } from './coin';
-import { APP_FEE_WALLET, APP_SHARE_BPS, CHERRY_APP_ID, TX_BYTE_LIMIT, USER_SHARE_BPS } from './constants';
+import { APP_FEE_WALLET, APP_SHARE_BPS, CHERRY_APP_ID, SPIKE_TEST_RECIPIENT, TX_BYTE_LIMIT, USER_SHARE_BPS } from './constants';
 
 // Shape-only Global: amounts don't change instruction bytes. Values ≈ mainnet defaults.
 const k = () => Keypair.generate().publicKey;
@@ -70,6 +70,8 @@ describe('money constants', () => {
     expect(APP_FEE_WALLET).toBe('FtuidxSaoNDeTuNTDuf9jLACVwqjgQeBwKTYC54f3GYp');
     expect(CHERRY_APP_ID).toBe('52e41534-4c7b-4237-9a16-ec8ea7a3c9dc');
     expect(new PublicKey(APP_FEE_WALLET).toBase58()).toBe(APP_FEE_WALLET);
+    expect(new PublicKey(SPIKE_TEST_RECIPIENT).toBase58()).toBe(SPIKE_TEST_RECIPIENT);
+    expect(SPIKE_TEST_RECIPIENT).not.toBe(APP_FEE_WALLET);
   });
   it('splits 95 / 5 and sums to 10 000 bps', () => {
     expect([USER_SHARE_BPS, APP_SHARE_BPS]).toEqual([9500, 500]);
