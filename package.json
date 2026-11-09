@@ -23,6 +23,7 @@
     "@types/bn.js": "^5.2.0",
     "@types/node": "^26.6.6",
     "@vercel/node": "^30.0.0",
+    "jose": "^5.10.0",
     "typescript": "^5.9.3",
     "vite": "^6.4.5",
     "vite-plugin-node-polyfills": "^0.28.0",

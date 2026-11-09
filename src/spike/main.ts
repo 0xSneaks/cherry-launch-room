@@ -108,6 +108,22 @@ async function run(variant: Variant) {
   }
 }
 
+// Verified identity from our backend. Memory only (no cookies inside Cherry's frame).
+let session: { userKey: string; wallet: string; tier: string | null } | null = null;
+
+/** Exchange the 5-minute launch token ONCE for a server-verified identity. */
+async function exchangeLaunchToken(token: string) {
+  if (!token || session) return;
+  try {
+    const res = await fetch('/api/auth/cherry', { method: 'POST', headers: { authorization: `Bearer ${token}` } });
+    if (!res.ok) return log(`Server refused the launch token (${res.status}).`);
+    session = await res.json();
+    log(`Server verified you (tier ${session?.tier ?? '?'}).`);
+  } catch {
+    log('Could not reach the server to verify the launch token.');
+  }
+}
+
 async function boot() {
   const inCherry = isInsideCherry();
   $('env').textContent = inCherry ? 'Inside Cherry' : 'Not inside Cherry — open from the Cherry app to sign.';
@@ -126,6 +142,7 @@ async function boot() {
     await cherry.init();
     const w = signerWallet()?.toBase58() ?? 'none';
     $('who').textContent = `Wallet ${w.slice(0, 4)}…${w.slice(-4)} · tier ${cherry.tier ?? '?'} · ${cherry.hasPermission('wallet:sign') ? 'wallet:sign ✓' : 'wallet:sign MISSING'}`;
+    void exchangeLaunchToken(cherry.launchToken);
   } catch (e) {
     $('who').textContent = `Cherry handshake failed: ${(e as Error).message}`;
   }
