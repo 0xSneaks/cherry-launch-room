@@ -14,8 +14,11 @@ export const ROUTES = { SOL: ['C', 'D'], USDC: ['F'], CUSTOM: ['H'], MAYHEM: ['G
 
 /**
  * Harness results from Sneaks's "Copy results table" in Cherry (2026-11-09): every signable variant came back
- * DANGEROUS_INSTRUCTION from Cherry Wallet; E is measure-only. Our own sim said AccountNotFound on every tx
- * (signing wallet unfunded). Dry-run signing is allowed either way (it IS the test).
+ * DANGEROUS_INSTRUCTION from Cherry Wallet; E is measure-only. Re-run with the wallet funded: same refusals, our
+ * sim of the create tx passes. Pump's create_v2 itself CPIs spl-token SetAuthority (revokes mint authority) and
+ * updateTokenMetadataAuthority -> null (VERIFIED by simulation); SetAuthority is on Cherry's forbidden list for
+ * unverified/verified tiers (SDK README §8). Likely cause (INFERENCE): only Cherry can allow it (partner tier).
+ * Dry-run signing is allowed either way (it IS the test).
  * A future live mode must refuse any route whose variants are not all 'signed'.
  */
 export const HARNESS_RESULTS: Record<HarnessVariant, 'untested' | 'signed' | 'refused'> = {
