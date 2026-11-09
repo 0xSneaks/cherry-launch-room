@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [nodePolyfills({ include: ['buffer', 'crypto', 'stream', 'util', 'events'], globals: { Buffer: true, process: true } })],
   build: {
     rollupOptions: {
-      input: { main: resolve(__dirname, 'index.html'), spike: resolve(__dirname, 'spike/index.html') },
+      input: { main: resolve(__dirname, 'index.html'), debug: resolve(__dirname, 'debug/index.html') },
     },
   },
 });

@@ -17,6 +17,15 @@
       ]
     },
     {
+      "source": "/debug/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
       "source": "/.well-known/cherry-app.json",
       "headers": [
         {
@@ -24,6 +33,18 @@
           "value": "application/json"
         }
       ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/spike",
+      "destination": "/debug/",
+      "permanent": false
+    },
+    {
+      "source": "/spike/",
+      "destination": "/debug/",
+      "permanent": false
     }
   ]
 }
