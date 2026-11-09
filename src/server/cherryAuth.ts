@@ -7,7 +7,7 @@ export const CHERRY_ISSUER = 'https://chat.cherry.fun';
 export interface CherryIdentity {
   /** The person (Cherry ID). Key accounts by this, never by the wallet. */
   userKey: string;
-  /** Wallet this launch pays from; can change between launches. */
+  /** Wallet Cherry signs with for this app (payment_wallet ?? sub); can change between launches. */
   wallet: string;
   tier: string | null;
   exp: number;
@@ -33,7 +33,8 @@ export async function verifyCherryToken(
       ok: true,
       identity: {
         userKey: claims.cherry_id ?? claims.sub,
-        wallet: claims.sub,
+        // The wallet Cherry signs with in this app (payment_wallet), else the identity wallet.
+        wallet: claims.payment_wallet ?? claims.sub,
         tier: claims.tier ?? null,
         exp: claims.exp,
       },

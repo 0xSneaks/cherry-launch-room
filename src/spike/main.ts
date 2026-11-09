@@ -11,6 +11,7 @@ import { VARIANTS, buildVariant, fitsLegacy, serializedSize, type Variant } from
 import { SPIKE_COIN } from './coin';
 import { APP_FEE_WALLET, SPIKE_LABEL } from './constants';
 import { isKill, refusalFields, toMarkdown, type SpikeRow } from './result';
+import { sessionFromResponse, short, type SessionState } from './session';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const log = (msg: string) => {
@@ -55,6 +56,7 @@ function render() {
 async function run(variant: Variant) {
   const wallet = signerWallet();
   if (!cherry || !wallet) return log('No Cherry wallet. Open this page inside Cherry.');
+  if (auth.kind !== 'signed-in') return log('Not signed in: the server has not verified your launch token.');
   const spec = VARIANTS[variant];
   document.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
   let mint: Keypair | null = Keypair.generate(); // memory only, dropped after the run
@@ -104,24 +106,44 @@ async function run(variant: Variant) {
     rows.push(row);
     log(`${variant}: ${row.result}${row.code ? ' ' + row.code : ''}${row.policyCode ? ' / ' + row.policyCode : ''}${row.reason ? ' — ' + row.reason : ''}`);
     render();
-    document.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = false));
+    setVariantButtons(auth.kind === 'signed-in');
+    ($('copy') as HTMLButtonElement).disabled = false;
   }
 }
 
-// Verified identity from our backend. Memory only (no cookies inside Cherry's frame).
-let session: { userKey: string; wallet: string; tier: string | null } | null = null;
+// Signed-in state comes ONLY from our backend verifying the launch token. Memory only.
+let auth: SessionState = { kind: 'checking' };
+
+function setVariantButtons(enabled: boolean) {
+  $('variants').querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = !enabled));
+}
+
+function renderWho() {
+  const sdk = cherry ? `${cherry.hasPermission('wallet:sign') ? 'wallet:sign ✓' : 'wallet:sign MISSING'}` : '';
+  $('who').textContent =
+    auth.kind === 'signed-in'
+      ? `Signed in: ${short(auth.session.wallet)} · tier ${auth.session.tier ?? '?'} · ${sdk}`
+      : auth.kind === 'checking'
+        ? 'Checking your launch token with the server…'
+        : `Not signed in: ${auth.reason}.`;
+  setVariantButtons(auth.kind === 'signed-in');
+}
 
 /** Exchange the 5-minute launch token ONCE for a server-verified identity. */
 async function exchangeLaunchToken(token: string) {
-  if (!token || session) return;
-  try {
-    const res = await fetch('/api/auth/cherry', { method: 'POST', headers: { authorization: `Bearer ${token}` } });
-    if (!res.ok) return log(`Server refused the launch token (${res.status}).`);
-    session = await res.json();
-    log(`Server verified you (tier ${session?.tier ?? '?'}).`);
-  } catch {
-    log('Could not reach the server to verify the launch token.');
+  const sdkWallet = signerWallet()?.toBase58() ?? null;
+  if (!token) {
+    auth = { kind: 'signed-out', reason: 'no launch token from Cherry' };
+  } else {
+    try {
+      const res = await fetch('/api/auth/cherry', { method: 'POST', headers: { authorization: `Bearer ${token}` } });
+      auth = sessionFromResponse(res.status, await res.json().catch(() => null), sdkWallet);
+    } catch {
+      auth = { kind: 'signed-out', reason: 'could not reach the server' };
+    }
   }
+  log(auth.kind === 'signed-in' ? 'Server verified your launch token.' : `Signed out: ${auth.kind === 'signed-out' ? auth.reason : ''}`);
+  renderWho();
 }
 
 async function boot() {
@@ -136,15 +158,19 @@ async function boot() {
   $('copy').onclick = () => void navigator.clipboard?.writeText(toMarkdown(rows)).then(() => log('Table copied.'));
   ($('feeRecipient') as HTMLInputElement).value = APP_FEE_WALLET;
   render();
-  if (!inCherry) return;
+  renderWho();
+  if (!inCherry) {
+    auth = { kind: 'signed-out', reason: 'open this page inside Cherry' };
+    return renderWho();
+  }
   try {
     cherry = new CherryMiniApp({ initTimeout: 8000 });
     await cherry.init();
-    const w = signerWallet()?.toBase58() ?? 'none';
-    $('who').textContent = `Wallet ${w.slice(0, 4)}…${w.slice(-4)} · tier ${cherry.tier ?? '?'} · ${cherry.hasPermission('wallet:sign') ? 'wallet:sign ✓' : 'wallet:sign MISSING'}`;
-    void exchangeLaunchToken(cherry.launchToken);
+    renderWho();
+    await exchangeLaunchToken(cherry.launchToken);
   } catch (e) {
-    $('who').textContent = `Cherry handshake failed: ${(e as Error).message}`;
+    auth = { kind: 'signed-out', reason: `Cherry handshake failed: ${(e as Error).message}` };
+    renderWho();
   }
 }
 

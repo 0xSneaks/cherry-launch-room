@@ -7,6 +7,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('cache-control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   const result = await verifyCherryToken(bearerToken(req.headers.authorization));
+  // Log the reason code only, never the token.
+  console.log(`[auth/cherry] ${result.ok ? 'ok' : result.status + ' ' + result.code}`);
   if (!result.ok) return res.status(result.status).json({ error: result.code });
   const { userKey, wallet, tier, exp } = result.identity;
   return res.status(200).json({ userKey, wallet, tier, exp });

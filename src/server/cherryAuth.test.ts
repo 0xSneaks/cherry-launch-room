@@ -37,6 +37,12 @@ describe('verifyCherryToken', () => {
     const r = await verify(await token({ cherry_id: undefined }));
     expect(r.ok && r.identity.userKey).toBe('WaLLet1111111111111111111111111111111111111');
   });
+  it('returns payment_wallet as the signing wallet when present, else sub', async () => {
+    const pw = await verify(await token({ payment_wallet: 'PayWaLLet22222222222222222222222222222222222' }));
+    expect(pw.ok && pw.identity.wallet).toBe('PayWaLLet22222222222222222222222222222222222');
+    const sub = await verify(await token());
+    expect(sub.ok && sub.identity.wallet).toBe('WaLLet1111111111111111111111111111111111111');
+  });
   it('rejects a token for another app (aud)', async () => {
     expect(await verify(await token({}, { aud: 'another-app-id' }))).toMatchObject({ ok: false, status: 401, code: 'AUDIENCE_MISMATCH' });
   });
