@@ -33,4 +33,10 @@ export const short = (k: string) => `${k.slice(0, 4)}…${k.slice(-4)}`;
 
 /** Owner gate for the test buttons: only the server-verified wallet counts. */
 export const isOwner = (state: SessionState, owners: readonly string[]) =>
-  state.kind === 'signed-in' && owners.includes(state.session.wallet);
+  state.kind === 'signed-in' && owners.some((o) => ownerMatches(o, state.session.wallet));
+
+/** Full address, or 'start…end' as Cherry displays it (4 + 4 chars). Gates test buttons only: they sign nothing but the viewer's own wallet. */
+function ownerMatches(owner: string, wallet: string) {
+  const [start, end] = owner.split('…');
+  return end === undefined ? owner === wallet : wallet.startsWith(start) && wallet.endsWith(end) && start.length >= 4 && end.length >= 4;
+}

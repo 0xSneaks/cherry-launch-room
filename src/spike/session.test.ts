@@ -34,4 +34,10 @@ describe('owner gate', () => {
     expect(isOwner(sessionFromResponse(401, {}, 'W1', now), ['W1'])).toBe(false);
     expect(isOwner({ kind: 'checking' }, ['W1'])).toBe(false);
   });
+  it('matches the start…end form Cherry displays', () => {
+    const w = { ...ok, wallet: 'BGa7xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxYD7R' };
+    expect(isOwner(sessionFromResponse(200, w, w.wallet, now), ['BGa7…YD7R'])).toBe(true);
+    expect(isOwner(sessionFromResponse(200, w, w.wallet, now), ['BGa8…YD7R'])).toBe(false);
+    expect(isOwner(sessionFromResponse(200, w, w.wallet, now), ['B…R'])).toBe(false);
+  });
 });

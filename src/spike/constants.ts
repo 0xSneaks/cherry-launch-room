@@ -23,7 +23,10 @@ export const TX_BYTE_LIMIT = 1232;
 export const SPIKE_LABEL = 'TEST — sign only, will not be sent';
 
 /** Wallets that see the sign-only test buttons. Everyone else (reviewers, users) sees "coming soon". Public addresses. */
-export const SPIKE_OWNER_WALLETS: readonly string[] = [APP_FEE_WALLET]; // Sneaks (OWNER, 2026-11-09)
+export const SPIKE_OWNER_WALLETS: readonly string[] = [
+  APP_FEE_WALLET, // Sneaks (OWNER, 2026-11-09)
+  'BGa7…YD7R', // Sneaks's Cherry signing wallet as Cherry shows it (start…end); swap for the full address when known
+];
 
 /** Sign-only test 5% recipient when the signer IS the fee wallet (Sneaks's second wallet, 2026-11-09). Test only. */
 export const SPIKE_TEST_RECIPIENT = 'Hy3LMfJfKq2TzeYs1f2vHo32Wy22qF6PaEbo3xVWYP8N';
