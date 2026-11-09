@@ -167,7 +167,11 @@ async function showPumpSettings() {
   try {
     const [global, pairs] = await Promise.all([pump.fetchGlobal(), pump.fetchSupportedQuoteMints()]);
     const name = (m: PublicKey) => (m.equals(USDC) ? 'USDC' : `${m.toBase58().slice(0, 4)}…`);
-    const listed = pairs.map((p) => (p.source === 'sol' ? 'SOL' : `${name(p.mint)} (${p.source})`)).join(', ');
+    const custom = pairs.filter((p) => p.source === 'quoteControl').length;
+    const listed = [
+      ...pairs.filter((p) => p.source === 'sol' || p.source === 'global').map((p) => (p.source === 'sol' ? 'SOL' : name(p.mint))),
+      ...(custom ? [`${custom} custom tokens`] : []),
+    ].join(', ');
     const qc = pairs.find((p) => p.source === 'quoteControl');
     if (qc && !($('pairMint') as HTMLInputElement).value) ($('pairMint') as HTMLInputElement).value = qc.mint.toBase58();
     $('pump').textContent =
