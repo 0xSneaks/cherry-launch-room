@@ -1,0 +1,31 @@
+{
+  "name": "cherry-launch-room",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "bytes": "vitest run src/spike/bytes.test.ts"
+  },
+  "dependencies": {
+    "@cherrydotfun/miniapp-sdk": "^0.1.24",
+    "@pump-fun/pump-sdk": "4.3.1",
+    "@solana/spl-token": "^0.4.15",
+    "@solana/wallet-adapter-base": "^0.9.28",
+    "@solana/web3.js": "^1.99.0",
+    "bn.js": "^5.2.5",
+    "buffer": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.2.0",
+    "@types/node": "^26.6.6",
+    "@vercel/node": "^30.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.5",
+    "vite-plugin-node-polyfills": "^0.28.0",
+    "vitest": "^3.2.7"
+  }
+}

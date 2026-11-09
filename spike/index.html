@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en" data-cherry-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Launch Room · sign-only spike</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0d0f12; --fg:#e8eaed; --muted:#9aa0a6; --card:#171a1f; --accent:#ff3b5c; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.4 system-ui, sans-serif;
+      padding: calc(12px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); max-width: 480px; }
+    h1 { font-size:18px; margin:0 0 4px; }
+    .warn { background:#2a1316; border:1px solid var(--accent); border-radius:10px; padding:10px; margin:10px 0; }
+    .muted { color:var(--muted); font-size:13px; }
+    #variants { display:grid; gap:8px; margin:12px 0; }
+    button { min-height:44px; border-radius:10px; border:1px solid #333; background:var(--card); color:var(--fg);
+      font-size:14px; text-align:left; padding:10px 12px; }
+    button:disabled { opacity:.5; }
+    input { width:100%; min-height:44px; background:var(--card); color:var(--fg); border:1px solid #333; border-radius:10px; padding:0 10px; font-size:13px; }
+    pre { white-space:pre-wrap; word-break:break-word; background:var(--card); padding:10px; border-radius:10px; font-size:12px; }
+    #verdict { font-weight:600; margin:8px 0; }
+    ul { padding-left:16px; font-size:12px; color:var(--muted); }
+    footer { margin-top:16px; font-size:12px; color:var(--muted); }
+    footer a { color:var(--muted); }
+  </style>
+</head>
+<body>
+  <h1>Launch Room — sign-only spike</h1>
+  <div class="warn">TEST. Each button asks your Cherry wallet to <b>sign</b> a Pump.fun launch. The signed bytes are thrown away. <b>Nothing is sent. No SOL moves.</b></div>
+  <div id="env" class="muted"></div>
+  <div id="who" class="muted"></div>
+  <label class="muted" for="feeRecipient">Variant D 5% recipient (an address you control, not your Cherry wallet)</label>
+  <input id="feeRecipient" spellcheck="false" autocomplete="off" />
+  <div id="variants"></div>
+  <div id="verdict"></div>
+  <pre id="table"></pre>
+  <button id="copy">Copy results table</button>
+  <ul id="log"></ul>
+  <footer>
+    Unofficial. Not affiliated with Pump.fun. ·
+    <a href="https://portal.cherry.fun/legal/app_b22266243fde/52e41534-4c7b-4237-9a16-ec8ea7a3c9dc/terms" target="_blank" rel="noopener">Terms</a> ·
+    <a href="https://portal.cherry.fun/legal/app_b22266243fde/52e41534-4c7b-4237-9a16-ec8ea7a3c9dc/privacy" target="_blank" rel="noopener">Privacy</a>
+  </footer>
+  <script type="module" src="/src/spike/main.ts"></script>
+</body>
+</html>

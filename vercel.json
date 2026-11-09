@@ -1,0 +1,15 @@
+{
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Content-Security-Policy", "value": "frame-ancestors 'self' https://chat.cherry.fun https://cherry.fun https://*.cherry.fun" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "source": "/.well-known/cherry-app.json",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    }
+  ]
+}
