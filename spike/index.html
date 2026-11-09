@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Launch Room · sign-only spike</title>
+  <title>Launch Room</title>
   <style>
     :root { color-scheme: dark; --bg:#0d0f12; --fg:#e8eaed; --muted:#9aa0a6; --card:#171a1f; --accent:#ff3b5c; }
     * { box-sizing: border-box; }
@@ -25,10 +25,12 @@
   </style>
 </head>
 <body>
-  <h1>Launch Room — sign-only spike</h1>
-  <div class="warn">TEST. Each button asks your Cherry wallet to <b>sign</b> a Pump.fun launch. The signed bytes are thrown away. <b>Nothing is sent. No SOL moves.</b></div>
+  <h1>Launch Room</h1>
   <div id="env" class="muted"></div>
   <div id="who" class="muted"></div>
+  <div id="soon"><p>Launch a Pump.fun coin right from your Cherry room. Coming soon.</p></div>
+  <div id="spike" hidden>
+  <div class="warn">TEST. Each button asks your Cherry wallet to <b>sign</b> a Pump.fun launch. The signed bytes are thrown away. <b>Nothing is sent. No SOL moves.</b></div>
   <label class="muted" for="feeRecipient">Variant D 5% recipient (an address you control, not your Cherry wallet)</label>
   <input id="feeRecipient" spellcheck="false" autocomplete="off" />
   <div id="pump" class="muted">Reading Pump settings…</div>
@@ -39,6 +41,7 @@
   <pre id="table"></pre>
   <button id="copy">Copy results table</button>
   <ul id="log"></ul>
+  </div>
   <footer>
     Unofficial. Not affiliated with Pump.fun. ·
     <a href="https://portal.cherry.fun/legal/app_b22266243fde/52e41534-4c7b-4237-9a16-ec8ea7a3c9dc/terms" target="_blank" rel="noopener">Terms</a> ·

@@ -12,9 +12,9 @@ import { explainLaunchError } from '../launch/errors';
 import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { VARIANTS, buildVariant, fitsLegacy, serializedSize, type Variant } from './build';
 import { SPIKE_COIN } from './coin';
-import { APP_FEE_WALLET, SPIKE_LABEL } from './constants';
+import { APP_FEE_WALLET, SPIKE_LABEL, SPIKE_OWNER_WALLETS } from './constants';
 import { isKill, refusalFields, toMarkdown, type SpikeRow } from './result';
-import { sessionFromResponse, short, type SessionState } from './session';
+import { isOwner, sessionFromResponse, short, type SessionState } from './session';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const log = (msg: string) => {
@@ -101,14 +101,18 @@ async function engineTxs(variant: EngineVariant, wallet: PublicKey, mint: Public
 async function run(variant: Variant | EngineVariant) {
   const wallet = signerWallet();
   if (!cherry || !wallet) return log('No Cherry wallet. Open this page inside Cherry.');
-  if (auth.kind !== 'signed-in') return log('Not signed in: the server has not verified your launch token.');
+  if (!isOwner(auth, SPIKE_OWNER_WALLETS)) return log('Not available yet.');
   const spec = isEngine(variant) ? null : VARIANTS[variant];
   document.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
   let mint: Keypair | null = Keypair.generate(); // memory only, dropped after the run
   const row: SpikeRow = { variant, result: 'ERROR', bytes: [], at: new Date().toISOString() };
   try {
-    const appFeeRecipient = new PublicKey(($('feeRecipient') as HTMLInputElement).value.trim() || APP_FEE_WALLET);
-    if (appFeeRecipient.equals(wallet)) throw new Error('5% recipient equals your wallet: paste another address you control.');
+    let appFeeRecipient = new PublicKey(($('feeRecipient') as HTMLInputElement).value.trim() || APP_FEE_WALLET);
+    if (appFeeRecipient.equals(wallet)) {
+      // Pump refuses a split with the same wallet twice. Sign-only test: nothing is sent, so a throwaway works.
+      appFeeRecipient = Keypair.generate().publicKey;
+      log(`${variant}: 5% recipient = your wallet, so this test uses a throwaway ${short(appFeeRecipient.toBase58())} (nothing is sent).`);
+    }
     let txs: Transaction[];
     if (!spec) {
       txs = await engineTxs(variant as EngineVariant, wallet, mint.publicKey, appFeeRecipient);
@@ -157,7 +161,7 @@ async function run(variant: Variant | EngineVariant) {
     rows.push(row);
     log(`${variant}: ${row.result}${row.code ? ' ' + row.code : ''}${row.policyCode ? ' / ' + row.policyCode : ''}${row.reason ? ' — ' + row.reason : ''}`);
     render();
-    setVariantButtons(auth.kind === 'signed-in');
+    setVariantButtons(isOwner(auth, SPIKE_OWNER_WALLETS));
     ($('copy') as HTMLButtonElement).disabled = false;
   }
 }
@@ -198,7 +202,10 @@ function renderWho() {
       : auth.kind === 'checking'
         ? 'Checking your launch token with the server…'
         : `Not signed in: ${auth.reason}.`;
-  setVariantButtons(auth.kind === 'signed-in');
+  const owner = isOwner(auth, SPIKE_OWNER_WALLETS);
+  $('spike').hidden = !owner;
+  $('soon').hidden = owner;
+  setVariantButtons(owner);
 }
 
 /** Exchange the 5-minute launch token ONCE for a server-verified identity. */

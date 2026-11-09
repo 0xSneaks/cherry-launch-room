@@ -30,3 +30,7 @@ export function sessionFromResponse(
 }
 
 export const short = (k: string) => `${k.slice(0, 4)}…${k.slice(-4)}`;
+
+/** Owner gate for the test buttons: only the server-verified wallet counts. */
+export const isOwner = (state: SessionState, owners: readonly string[]) =>
+  state.kind === 'signed-in' && owners.includes(state.session.wallet);

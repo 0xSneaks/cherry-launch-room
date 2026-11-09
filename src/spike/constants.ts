@@ -21,3 +21,6 @@ export const TX_BYTE_LIMIT = 1232;
 
 /** Shown in Cherry's wallet sheet for every spike request (≤ 80 chars). */
 export const SPIKE_LABEL = 'TEST — sign only, will not be sent';
+
+/** Wallets that see the sign-only test buttons. Everyone else (reviewers, users) sees "coming soon". Public addresses. */
+export const SPIKE_OWNER_WALLETS: readonly string[] = [APP_FEE_WALLET]; // Sneaks (OWNER, 2026-11-09)
