@@ -13,12 +13,13 @@ export type HarnessVariant = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
 export const ROUTES = { SOL: ['C', 'D'], USDC: ['F'], CUSTOM: ['H'], MAYHEM: ['G'] } as const satisfies Record<string, readonly HarnessVariant[]>;
 
 /**
- * Harness results from Sneaks's "Copy results table" in Cherry. UNKNOWN until he pastes it: no table exists yet
- * (checked ai-coms + the spike session, 2026-11-09). Dry-run signing is allowed either way (it IS the test).
+ * Harness results from Sneaks's "Copy results table" in Cherry (2026-11-09): every signable variant came back
+ * DANGEROUS_INSTRUCTION from Cherry Wallet; E is measure-only. Our own sim said AccountNotFound on every tx
+ * (signing wallet unfunded). Dry-run signing is allowed either way (it IS the test).
  * A future live mode must refuse any route whose variants are not all 'signed'.
  */
 export const HARNESS_RESULTS: Record<HarnessVariant, 'untested' | 'signed' | 'refused'> = {
-  A: 'untested', B: 'untested', C: 'untested', D: 'untested', E: 'untested', F: 'untested', G: 'untested', H: 'untested',
+  A: 'refused', B: 'refused', C: 'refused', D: 'refused', E: 'untested', F: 'refused', G: 'refused', H: 'refused',
 };
 
 /**
