@@ -3,114 +3,144 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#0d0f12" />
   <title>PetalDeck</title>
   <link rel="icon" href="/brand/petaldeck-icon.png" />
 </head>
 <body>
   <div id="appRoot" class="app-root" aria-hidden="true"></div>
-  <header class="top">
-    <h1>PetalDeck</h1>
+
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="PetalDeck home">
+      <img src="/brand/petaldeck-icon.png" alt="" width="32" height="32" />
+      <span class="wordmark">PetalDeck</span>
+    </a>
     <span id="walletChip" class="chip chip-off">No wallet</span>
   </header>
 
-  <main class="form" id="form">
-    <div class="identity">
-    <div class="id-image">
-    <label class="upload" id="upload" for="image">
-      <input id="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="sr-only" />
-      <img id="imagePreview" alt="" hidden />
-      <span class="upload-empty" id="uploadEmpty">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
-        <strong>Add image</strong>
-        <span>PNG, JPG, GIF or WebP · up to 15 MB</span>
-      </span>
-      <span class="upload-change" id="uploadChange" hidden>Change</span>
-    </label>
-    <p class="err" data-err="image"></p>
+  <main class="page" id="page">
+    <div class="intro">
+      <h1>Create new coin</h1>
+      <p class="sub">Coin details</p>
+      <p class="muted small">Name, ticker and image are locked once your coin is live.</p>
     </div>
 
-    <div class="id-fields">
-    <div class="field">
-      <label for="name">Name</label>
-      <input id="name" autocomplete="off" maxlength="32" placeholder="Cherry Blossom" />
-      <p class="err" data-err="name"></p>
-    </div>
+    <!-- Card 1: details -->
+    <section class="card" aria-label="Coin details">
+      <div class="field">
+        <label for="name">Coin name</label>
+        <input id="name" autocomplete="off" maxlength="32" placeholder="Cherry Blossom" />
+        <p class="err" data-err="name"></p>
+      </div>
 
-    <div class="field">
-      <label for="ticker">Ticker</label>
-      <div class="affix"><span class="prefix">$</span><input id="ticker" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="13" placeholder="PETAL" /></div>
-      <p class="err" data-err="ticker"></p>
-    </div>
-    </div>
-    </div>
+      <div class="field">
+        <label for="ticker">Ticker</label>
+        <div class="affix"><span class="prefix">$</span><input id="ticker" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="13" placeholder="PETAL" /></div>
+        <p class="err" data-err="ticker"></p>
+      </div>
 
-    <div class="field" id="descField">
-      <label for="description">Description <span class="opt">optional</span></label>
-      <textarea id="description" rows="3" maxlength="500" placeholder="What's the coin about?"></textarea>
-      <p class="err" data-err="description"></p>
-    </div>
+      <div class="field">
+        <label for="description">Description <span class="opt">(Optional)</span></label>
+        <textarea id="description" rows="3" maxlength="500" placeholder="Tell people what your coin is about"></textarea>
+        <p class="err" data-err="description"></p>
+      </div>
 
-    <details class="fold" id="moreFold">
-      <summary>More options</summary>
-      <div class="fold-body" id="moreBody">
-        <div class="field">
-          <label for="website">Website</label>
-          <input id="website" type="url" inputmode="url" autocomplete="off" placeholder="https://" />
-          <p class="err" data-err="website"></p>
+      <details class="fold" id="socialsFold">
+        <summary>Add social links <span class="opt">(Optional)</span></summary>
+        <div class="fold-body">
+          <div class="field">
+            <label for="website">Website</label>
+            <input id="website" type="url" inputmode="url" autocomplete="off" placeholder="https://" />
+            <p class="err" data-err="website"></p>
+          </div>
+          <div class="field">
+            <label for="x">X</label>
+            <input id="x" type="url" inputmode="url" autocomplete="off" placeholder="https://x.com/…" />
+            <p class="err" data-err="x"></p>
+          </div>
+          <div class="field">
+            <label for="telegram">Telegram</label>
+            <input id="telegram" type="url" inputmode="url" autocomplete="off" placeholder="https://t.me/…" />
+            <p class="err" data-err="telegram"></p>
+          </div>
         </div>
-        <div class="field">
-          <label for="x">X</label>
-          <input id="x" type="url" inputmode="url" autocomplete="off" placeholder="https://x.com/…" />
-          <p class="err" data-err="x"></p>
+      </details>
+
+      <div class="field">
+        <span class="label" id="pairLabel">Pool liquidity pair</span>
+        <div class="tiles" role="radiogroup" aria-labelledby="pairLabel">
+          <button type="button" class="tile" role="radio" data-pair="SOL" aria-checked="true"><strong>SOL</strong><span>Default</span></button>
+          <button type="button" class="tile" role="radio" data-pair="USDC" aria-checked="false"><strong>USDC</strong><span>Stable</span></button>
+          <button type="button" class="tile" role="radio" data-pair="CUSTOM" aria-checked="false"><strong>Custom</strong><span>Any mint</span></button>
         </div>
-        <div class="field">
-          <label for="telegram">Telegram</label>
-          <input id="telegram" type="url" inputmode="url" autocomplete="off" placeholder="https://t.me/…" />
-          <p class="err" data-err="telegram"></p>
+        <div class="field sub" id="customMintField" hidden>
+          <label for="customMint">Pair token mint</label>
+          <input id="customMint" autocomplete="off" spellcheck="false" placeholder="Paste a token mint address" />
+          <p class="hint">A token Pump accepts as a pair: a listed token or a pump coin.</p>
+          <p class="err" data-err="customMint"></p>
         </div>
       </div>
-    </details>
 
-    <div class="field">
-      <span class="label" id="pairLabel">Pair</span>
-      <div class="segmented" role="radiogroup" aria-labelledby="pairLabel">
-        <button type="button" role="radio" data-pair="SOL" aria-checked="true">SOL</button>
-        <button type="button" role="radio" data-pair="USDC" aria-checked="false">USDC</button>
-        <button type="button" role="radio" data-pair="CUSTOM" aria-checked="false">Custom</button>
+      <div class="field">
+        <span class="label" id="rewardsLabel">Share creator rewards</span>
+        <p class="hint">Trading fees on your coin go to you (95%) and PetalDeck (5%).</p>
+        <div class="segmented" role="radiogroup" aria-labelledby="rewardsLabel">
+          <button type="button" role="radio" data-rewards="creator" aria-checked="true">Creator</button>
+          <button type="button" role="radio" data-rewards="holders" aria-checked="false" disabled>Holders <span class="badge">Soon</span></button>
+        </div>
       </div>
-      <div class="field sub" id="customMintField" hidden>
-        <label for="customMint">Pair token mint</label>
-        <input id="customMint" autocomplete="off" spellcheck="false" placeholder="Paste a mint address" />
-        <p class="err" data-err="customMint"></p>
-      </div>
-    </div>
 
-    <div class="field" id="buyField">
-      <label for="initialBuy">Initial buy <span class="opt">optional</span></label>
-      <div class="affix"><input id="initialBuy" inputmode="decimal" autocomplete="off" placeholder="0" /><span class="suffix" id="buyUnit">SOL</span></div>
-      <div class="chips" id="buyChips"></div>
-      <p class="err" data-err="initialBuy"></p>
-    </div>
-
-    <details class="fold" id="advFold">
-      <summary>Advanced</summary>
-      <div class="fold-body" id="advBody">
+      <div class="field">
         <label class="switch-row" for="mayhem">
-          <span><span class="row-title">Mayhem mode <button type="button" class="info" data-info="mayhemHint" aria-label="About mayhem mode">i</button></span><span class="hint" id="mayhemHint">SOL or USDC pairs only.</span></span>
+          <span class="label">Mayhem mode</span>
           <input id="mayhem" type="checkbox" role="switch" class="switch" />
         </label>
+        <p class="hint" id="mayhemHint">Pump's mayhem launch mode. SOL or USDC pairs only, set once at creation.</p>
         <p class="err" data-err="mayhem"></p>
-        <div class="field" id="creatorFeeField">
-          <label for="creatorFeePct">Creator fee <button type="button" class="info" data-info="creatorFeeHint" aria-label="About creator fee">i</button></label>
-          <div class="affix"><input id="creatorFeePct" inputmode="decimal" autocomplete="off" placeholder="Pump default" /><span class="suffix">%</span></div>
-          <p class="hint" id="creatorFeeHint"></p>
-          <p class="err" data-err="creatorFeePct"></p>
-        </div>
       </div>
-    </details>
+    </section>
+
+    <!-- Card 2: media -->
+    <section class="card" aria-label="Coin image">
+      <label class="drop" id="drop" for="media">
+        <input id="media" type="file" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm" class="sr-only" />
+        <img id="mediaImg" alt="" hidden />
+        <video id="mediaVideo" muted loop playsinline autoplay hidden></video>
+        <span class="drop-empty" id="dropEmpty">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
+          <span>Your coin's picture or clip</span>
+          <span class="btn-accent">Select image or video</span>
+        </span>
+        <span class="drop-change" id="dropChange" hidden>Change</span>
+      </label>
+      <p class="err" data-err="media"></p>
+      <dl class="rules">
+        <div><dt>Files</dt><dd>Images: PNG, JPG, GIF or WebP, up to 15 MB. Videos: MP4 or WebM, up to 30 MB.</dd></div>
+        <div><dt>Size</dt><dd>Square images look best at 1000 × 1000 px or larger. Videos: 16:9 or 9:16.</dd></div>
+      </dl>
+      <details class="fold" id="bannerFold">
+        <summary>Add banner <span class="opt">(Optional)</span></summary>
+        <div class="fold-body">
+          <label class="drop drop-wide" id="bannerDrop" for="banner">
+            <input id="banner" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="sr-only" />
+            <img id="bannerImg" alt="" hidden />
+            <span class="drop-empty" id="bannerEmpty"><span class="btn-accent">Select banner</span></span>
+          </label>
+          <p class="hint">Wide 3:1 image, like 1500 × 500 px. Up to 5 MB.</p>
+          <p class="err" data-err="banner"></p>
+        </div>
+      </details>
+    </section>
+
+    <p class="strip" role="note">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
+      <span>Coin data goes on-chain at launch and can't be edited afterwards.</span>
+    </p>
 
     <p class="fee-line" id="feeLine"></p>
+
+    <div class="create-bar">
+      <button id="create" class="primary" type="button" disabled>Create coin</button>
+    </div>
 
     <footer class="legal">
       Unofficial. Not affiliated with Pump.fun. ·
@@ -119,31 +149,47 @@
     </footer>
   </main>
 
-  <div class="bottom-bar">
-    <button id="create" class="primary" type="button" disabled>Create coin</button>
+  <!-- Sheet 1: initial buy -->
+  <div class="sheet" id="buySheet" hidden>
+    <div class="sheet-backdrop" data-close="buySheet"></div>
+    <section class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="buyTitle">
+      <div class="grabber" aria-hidden="true"></div>
+      <div class="sheet-body">
+        <h2 id="buyTitle">Initial buy <span class="opt">(Optional)</span></h2>
+        <p class="hint">Buy some of your own coin in the same approval.</p>
+        <div class="affix"><input id="initialBuy" inputmode="decimal" autocomplete="off" placeholder="0" aria-label="Initial buy amount" /><span class="suffix" id="buyUnit">SOL</span></div>
+        <div class="chips" id="buyChips"></div>
+        <p class="err" data-err="initialBuy"></p>
+      </div>
+      <div class="sheet-actions">
+        <button id="buyContinue" class="primary" type="button">Continue</button>
+        <button id="buySkip" class="ghost" type="button">Skip</button>
+      </div>
+    </section>
   </div>
 
+  <!-- Sheet 2: confirm -->
   <div class="sheet" id="sheet" hidden>
-    <div class="sheet-backdrop" data-close></div>
+    <div class="sheet-backdrop" data-close="sheet"></div>
     <section class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
       <div class="grabber" aria-hidden="true"></div>
       <div class="sheet-body">
-      <div class="coin">
-        <img id="sheetImage" alt="" />
-        <div><h2 id="sheetTitle"></h2><p id="sheetTicker" class="muted"></p></div>
-      </div>
-      <dl class="rows">
-        <div><dt>Pair</dt><dd id="sheetPair"></dd></div>
-        <div><dt>Initial buy</dt><dd id="sheetBuy"></dd></div>
-        <div><dt>Est. total cost</dt><dd id="sheetCost"></dd></div>
-        <div><dt>Creator fees</dt><dd id="sheetFees"></dd></div>
-      </dl>
-      <p class="hint" id="sheetNote"></p>
-      <p class="hint" id="sheetDryRun" hidden>Dry run: Cherry signs, nothing is sent, no SOL moves.</p>
+        <div class="coin">
+          <span class="coin-media" id="sheetMedia"></span>
+          <div><h2 id="sheetTitle"></h2><p id="sheetTicker" class="muted"></p></div>
+        </div>
+        <dl class="rows">
+          <div><dt>Pair</dt><dd id="sheetPair"></dd></div>
+          <div><dt>Initial buy</dt><dd id="sheetBuy"></dd></div>
+          <div><dt>Est. total cost</dt><dd id="sheetCost"></dd></div>
+          <div><dt>Creator fees</dt><dd id="sheetFees"></dd></div>
+        </dl>
+        <p class="hint" id="sheetNote"></p>
+        <p class="hint" id="sheetDryRun" hidden>Dry run: Cherry signs, nothing is sent, no SOL moves.</p>
       </div>
       <div class="sheet-actions">
-      <button id="sign" class="primary" type="button">Sign in Cherry</button>
-      <button class="ghost" type="button" data-close>Cancel</button>
+        <button id="sign" class="primary" type="button">Sign in Cherry</button>
+        <button class="ghost" type="button" id="sheetBack">Back</button>
       </div>
     </section>
   </div>

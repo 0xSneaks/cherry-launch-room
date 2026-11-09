@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-// PetalDeck main screen: pump.fun-style create-coin form → confirm sheet → one Cherry approval.
+// PetalDeck main screen: "Create new coin" form → initial-buy sheet → confirm sheet → one Cherry approval.
 // UI only. Transactions come from the unchanged engine via createLauncher().buildLaunch(formData).
 import { Buffer } from 'buffer';
 (globalThis as { Buffer?: typeof Buffer }).Buffer ??= Buffer;
@@ -13,9 +13,12 @@ import { SPIKE_OWNER_WALLETS } from '../spike/constants';
 import { isOwner, sessionFromResponse, type SessionState } from '../spike/session';
 import { FEE_LINE, LAUNCH_MODE, QUICK_BUYS } from './config';
 import {
+  buyError,
   emptyForm,
   hasErrors,
   isValidMint,
+  isVideo,
+  mediaError,
   normalizeTicker,
   requiredErrors,
   unitOf,
@@ -26,17 +29,19 @@ import {
   type Pair,
   type PumpLimits,
 } from './form';
-import { nextTier, type Tier } from './tiers';
 import { FeeWalletIsSignerError, FormInvalidError, createLauncher, shortKey, type CherrySigner, type LaunchSummary, type PreparedLaunch } from './launch';
+import { nextTier, type Tier } from './tiers';
 
 // Hidden dev flag: /?debug=1 opens the A–H test harness (keeps Cherry's own params).
-const debugParams = new URLSearchParams(location.search);
-const goDebug = debugParams.has('debug');
+const params = new URLSearchParams(location.search);
+const goDebug = params.has('debug');
 if (goDebug) {
-  debugParams.delete('debug');
-  const rest = debugParams.toString();
+  params.delete('debug');
+  const rest = params.toString();
   location.replace(`/debug/${rest ? '?' + rest : ''}`);
 }
+const theme = params.get('cherry_theme');
+if (theme === 'light' || theme === 'dark') document.documentElement.dataset.cherryTheme = theme;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const input = (id: string) => $<HTMLInputElement>(id);
@@ -49,13 +54,12 @@ const touched = new Set<Field>();
 let limits: PumpLimits | null = null;
 let customCheck: { mint: string; decimals?: number; error?: string } | null = null;
 let feeRecipient: PublicKey | null = null;
-let cherry: CherryMiniApp | null = null;
 let auth: SessionState = { kind: 'checking' };
 let signer: CherrySigner | null = null;
 let ownerOverride = false; // dev preview only
 let prepared: PreparedLaunch | null = null;
-let imageUrl: string | null = null;
-let busy = false;
+let mediaUrl: string | null = null;
+let bannerUrl: string | null = null;
 
 // ---------- toasts ----------
 function toast(text: string, kind: 'error' | 'success' | 'info' = 'info', ms = 4000) {
@@ -71,51 +75,47 @@ function toast(text: string, kind: 'error' | 'success' | 'info' = 'info', ms = 4
 const decimals = () => (form.pair === 'USDC' ? 6 : form.pair === 'CUSTOM' ? (customCheck?.decimals ?? 9) : 9);
 
 function allErrors(): FieldErrors {
-  const e = validateForm(form, limits, decimals());
+  const e = validateForm(form, limits);
   if (!e.customMint && form.pair === 'CUSTOM' && customCheck?.mint === form.customMint.trim() && customCheck.error) {
     e.customMint = customCheck.error;
   }
   return e;
 }
 
-function render() {
-  const errs = allErrors();
-  document.querySelectorAll<HTMLElement>('[data-err]').forEach((p) => {
+function showErrors(errs: FieldErrors, scope: ParentNode = document) {
+  scope.querySelectorAll<HTMLElement>('[data-err]').forEach((p) => {
     const f = p.dataset.err as Field;
     const msg = touched.has(f) ? (errs[f] ?? '') : '';
     p.textContent = msg;
-    const el = document.getElementById(f);
-    if (el && f !== 'image') el.setAttribute('aria-invalid', String(!!msg));
-    if (el && msg) el.setAttribute('aria-describedby', `err-${f}`);
     p.id = `err-${f}`;
+    const el = document.getElementById(f);
+    if (el && el.tagName !== 'DIV') {
+      el.setAttribute('aria-invalid', String(!!msg));
+      if (msg) el.setAttribute('aria-describedby', p.id);
+    }
   });
-  $('upload').classList.toggle('invalid', touched.has('image') && !!errs.image);
+}
 
-  // Pair-dependent bits.
+function render() {
+  const errs = allErrors();
+  showErrors(errs, $('page'));
+  $('drop').classList.toggle('invalid', touched.has('media') && !!errs.media);
+
   document.querySelectorAll<HTMLButtonElement>('[data-pair]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.pair === form.pair)));
   $('customMintField').hidden = form.pair !== 'CUSTOM';
-  $('buyUnit').textContent = unitOf(form.pair);
-  document.querySelectorAll<HTMLButtonElement>('#buyChips button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.amount === form.initialBuy.trim())));
+  document.querySelectorAll<HTMLButtonElement>('[data-rewards]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.rewards === form.rewards)));
 
   const mayhemOk = form.pair !== 'CUSTOM' && (limits?.mayhemEnabled ?? false);
   input('mayhem').disabled = !mayhemOk;
-  $('mayhemHint').textContent = !limits ? 'Checking Pump…' : !limits.mayhemEnabled ? 'Pump has mayhem mode off right now.' : 'SOL or USDC pairs only.';
-
-  const feeOk = form.pair === 'CUSTOM' && (limits?.creatorFeeConfigurable ?? false);
-  input('creatorFeePct').disabled = !feeOk;
-  input('creatorFeePct').placeholder = feeOk ? 'Pump default' : 'Custom pairs only';
-  $('creatorFeeHint').textContent = !limits
+  $('mayhemHint').textContent = !limits
     ? 'Checking Pump…'
-    : !limits.creatorFeeConfigurable
-      ? 'Pump has custom creator fees off right now.'
-      : feeOk
-        ? `Up to ${limits.maxCreatorFeeBps / 100}% (Pump's current max).`
-        : 'Pump allows a custom creator fee on custom pairs only.';
+    : !limits.mayhemEnabled
+      ? 'Pump has mayhem mode off right now.'
+      : form.pair === 'CUSTOM'
+        ? 'Mayhem mode works with SOL or USDC pairs only.'
+        : "Pump's mayhem launch mode. SOL or USDC pairs only, set once at creation.";
 
-  const create = $<HTMLButtonElement>('create');
-  create.disabled = hasErrors(requiredErrors(form)) || busy;
-  create.setAttribute('aria-busy', String(busy));
-  create.textContent = busy ? 'Preparing…' : 'Create coin';
+  $<HTMLButtonElement>('create').disabled = hasErrors(requiredErrors(form));
 }
 
 function renderChip() {
@@ -123,21 +123,6 @@ function renderChip() {
   const wallet = auth.kind === 'signed-in' ? auth.session.wallet : null;
   chip.textContent = wallet ? shortKey(wallet) : 'No wallet';
   chip.classList.toggle('chip-off', !wallet);
-}
-
-// ---------- inputs ----------
-function bindText(id: Field & ('name' | 'description' | 'website' | 'x' | 'telegram' | 'initialBuy' | 'creatorFeePct' | 'customMint' | 'ticker')) {
-  const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement;
-  el.addEventListener('input', () => {
-    if (id === 'ticker') el.value = normalizeTicker(el.value);
-    form[id] = el.value;
-    if (id === 'customMint') void checkCustomMint();
-    render();
-  });
-  el.addEventListener('blur', () => {
-    if (el.value) touched.add(id);
-    renderAfterTap();
-  });
 }
 
 // A blur fires mid-tap (pointerdown on the next control). Rendering a new inline error right then shifts
@@ -156,13 +141,26 @@ document.addEventListener(
   },
   true,
 );
-function renderAfterTap() {
-  if (pointerDown) renderPending = true;
-  else render();
+const renderAfterTap = () => (pointerDown ? (renderPending = true) : render());
+
+// ---------- inputs ----------
+type TextField = 'name' | 'ticker' | 'description' | 'website' | 'x' | 'telegram' | 'customMint';
+function bindText(id: TextField) {
+  const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement;
+  el.addEventListener('input', () => {
+    if (id === 'ticker') el.value = normalizeTicker(el.value);
+    form[id] = el.value;
+    if (id === 'customMint') void checkCustomMint();
+    render();
+  });
+  el.addEventListener('blur', () => {
+    if (el.value) touched.add(id);
+    renderAfterTap();
+  });
 }
 
 let mintTimer: ReturnType<typeof setTimeout> | undefined;
-async function checkCustomMint() {
+function checkCustomMint() {
   clearTimeout(mintTimer);
   const mint = form.customMint.trim();
   if (!isValidMint(mint)) return;
@@ -178,40 +176,85 @@ async function checkCustomMint() {
   }, 400);
 }
 
-function setImage(file: File | null) {
-  touched.add('image');
-  if (imageUrl) URL.revokeObjectURL(imageUrl);
-  imageUrl = null;
-  form.image = file ? { type: file.type, size: file.size } : null;
-  const ok = file && !requiredErrors(form).image;
-  if (ok) imageUrl = URL.createObjectURL(file);
-  const img = $<HTMLImageElement>('imagePreview');
-  img.hidden = !ok;
-  if (imageUrl) img.src = imageUrl;
-  $('uploadEmpty').hidden = !!ok;
-  $('uploadChange').hidden = !ok;
-  $('upload').classList.toggle('has-image', !!ok);
+function setMedia(file: File | null) {
+  touched.add('media');
+  if (mediaUrl) URL.revokeObjectURL(mediaUrl);
+  mediaUrl = null;
+  form.media = file ? { type: file.type, size: file.size } : null;
+  const ok = !!file && !mediaError(form.media);
+  if (ok) mediaUrl = URL.createObjectURL(file);
+  const video = ok && isVideo(form.media);
+  const img = $<HTMLImageElement>('mediaImg');
+  const vid = $<HTMLVideoElement>('mediaVideo');
+  img.hidden = !ok || video;
+  vid.hidden = !ok || !video;
+  if (ok && !video) img.src = mediaUrl!;
+  if (ok && video) vid.src = mediaUrl!;
+  $('dropEmpty').hidden = ok;
+  $('dropChange').hidden = !ok;
+  $('drop').classList.toggle('has-file', ok);
+  render();
+}
+
+function setBanner(file: File | null) {
+  touched.add('banner');
+  if (bannerUrl) URL.revokeObjectURL(bannerUrl);
+  bannerUrl = null;
+  form.banner = file ? { type: file.type, size: file.size } : null;
+  const ok = !!file && !validateForm(form, limits).banner;
+  if (ok) bannerUrl = URL.createObjectURL(file);
+  $<HTMLImageElement>('bannerImg').hidden = !ok;
+  if (ok) $<HTMLImageElement>('bannerImg').src = bannerUrl!;
+  $('bannerEmpty').hidden = ok;
+  $('bannerDrop').classList.toggle('has-file', ok);
   render();
 }
 
 function setPair(pair: Pair) {
   form.pair = pair;
-  if (pair === 'CUSTOM') {
+  if (pair === 'CUSTOM' && form.mayhem) {
     form.mayhem = false;
     input('mayhem').checked = false;
-  } else {
-    form.creatorFeePct = '';
-    input('creatorFeePct').value = '';
   }
+  form.initialBuy = ''; // the unit changed
   render();
 }
 
-// ---------- confirm sheet ----------
+// ---------- sheets ----------
+function openSheet(id: 'buySheet' | 'sheet') {
+  $('toasts').replaceChildren(); // nothing may cover the sheet's buttons
+  $(id).hidden = false;
+}
+function closeSheet(id: 'buySheet' | 'sheet') {
+  $(id).hidden = true;
+  if (id === 'sheet') prepared = null;
+}
+
+function renderBuy() {
+  const err = buyError(form.initialBuy, decimals());
+  touched.add('initialBuy');
+  showErrors({ initialBuy: form.initialBuy.trim() ? err : undefined }, $('buySheet'));
+  $('buyUnit').textContent = unitOf(form.pair);
+  document.querySelectorAll<HTMLButtonElement>('#buyChips button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.amount === form.initialBuy.trim())));
+  $<HTMLButtonElement>('buyContinue').disabled = !!err;
+}
+
+function openBuySheet() {
+  input('initialBuy').value = form.initialBuy;
+  renderBuy();
+  openSheet('buySheet');
+}
+
 const sol = (lamports: number) => `${(lamports / LAMPORTS_PER_SOL).toLocaleString('en-US', { maximumFractionDigits: 4 })} SOL`;
 
-function openSheet(s: LaunchSummary) {
-  $('toasts').replaceChildren(); // nothing may cover the Sign button
-  $<HTMLImageElement>('sheetImage').src = imageUrl ?? '';
+function fillConfirm(s: LaunchSummary) {
+  const media = $('sheetMedia');
+  media.replaceChildren();
+  if (mediaUrl) {
+    const el = isVideo(form.media) ? Object.assign(document.createElement('video'), { muted: true, autoplay: true, loop: true, playsInline: true }) : document.createElement('img');
+    el.src = mediaUrl;
+    media.append(el);
+  }
   $('sheetTitle').textContent = s.name;
   $('sheetTicker').textContent = `$${s.ticker}`;
   $('sheetPair').textContent = s.pair;
@@ -221,13 +264,6 @@ function openSheet(s: LaunchSummary) {
   $('sheetNote').textContent = s.costNote ?? '';
   $('sheetNote').hidden = !s.costNote;
   $('sheetDryRun').hidden = !s.dryRun;
-  $('sheet').hidden = false;
-  $<HTMLButtonElement>('sign').focus();
-}
-
-function closeSheet() {
-  $('sheet').hidden = true;
-  prepared = null;
 }
 
 function showError(err: unknown) {
@@ -241,34 +277,59 @@ function showError(err: unknown) {
   toast(explainLaunchError(err), 'error', 6000);
 }
 
-async function onCreate() {
+function signedInWallet(): PublicKey | null {
+  return auth.kind === 'signed-in' ? new PublicKey(auth.session.wallet) : null;
+}
+
+/** Step 1: "Create coin" → check everything we can, then the buy sheet. */
+function onCreate() {
   (Object.keys(form) as Field[]).forEach((f) => {
-    if (f === 'image' || f === 'name' || f === 'ticker' || (form[f] !== '' && form[f] !== false)) touched.add(f);
+    if (['name', 'ticker', 'media'].includes(f) || (form[f] !== '' && form[f] !== false && form[f] !== null)) touched.add(f);
   });
   render();
   if (hasErrors(allErrors())) {
-    const first = document.querySelector('.err:not(:empty)');
-    first?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.querySelector('.page .err:not(:empty)')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return toast('Fix the highlighted fields.', 'error');
   }
+  const wallet = signedInWallet();
   if (!feeRecipient) return toast("Couldn't load PetalDeck settings. Try again in a minute.", 'error');
-  if (auth.kind !== 'signed-in' || !signer) return toast('Open PetalDeck inside Cherry to create a coin.', 'info');
+  if (!wallet || !signer) return toast('Open PetalDeck inside Cherry to create a coin.', 'info');
+  if (feeRecipient.equals(wallet)) return toast(new FeeWalletIsSignerError().message, 'error', 6000);
   if (LAUNCH_MODE === 'dry-run' && !ownerOverride && !isOwner(auth, SPIKE_OWNER_WALLETS)) return toast('Creating coins opens soon.', 'info');
+  openBuySheet();
+}
 
-  busy = true;
-  render();
+/** Step 2: buy chosen (or skipped) → buildLaunch(formData) → confirm sheet. */
+async function onBuyDone(skip: boolean) {
+  if (skip) form.initialBuy = '';
+  const wallet = signedInWallet();
+  if (!wallet || !signer || !feeRecipient) return;
+  const btn = $<HTMLButtonElement>(skip ? 'buySkip' : 'buyContinue');
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.setAttribute('aria-busy', 'true');
+  btn.textContent = 'Preparing…';
   try {
-    const launcher = createLauncher({ connection, pump, signer, wallet: new PublicKey(auth.session.wallet), feeRecipient });
-    prepared = await launcher.buildLaunch({ ...form });
-    openSheet(prepared.summary);
+    prepared = await createLauncher({ connection, pump, signer, wallet, feeRecipient }).buildLaunch({ ...form });
+    fillConfirm(prepared.summary);
+    closeSheet('buySheet');
+    openSheet('sheet');
   } catch (err) {
-    showError(err);
+    if (err instanceof FormInvalidError && err.fields.initialBuy && Object.keys(err.fields).length === 1) {
+      renderBuy();
+    } else {
+      closeSheet('buySheet');
+      showError(err);
+    }
   } finally {
-    busy = false;
-    render();
+    btn.disabled = false;
+    btn.removeAttribute('aria-busy');
+    btn.textContent = label;
+    if (!$('buySheet').hidden) renderBuy();
   }
 }
 
+/** Step 3: one Cherry approval. Dry-run: signed, verified, dropped. */
 async function onSign() {
   if (!prepared) return;
   const btn = $<HTMLButtonElement>('sign');
@@ -276,10 +337,10 @@ async function onSign() {
   btn.textContent = 'Waiting for Cherry…';
   try {
     const res = await prepared.sign();
-    closeSheet();
+    closeSheet('sheet');
     toast(res.verified ? 'Signed in Cherry. Dry run: nothing was sent.' : 'Signed, but a signature did not verify. Nothing was sent.', res.verified ? 'success' : 'error', 6000);
   } catch (err) {
-    closeSheet();
+    closeSheet('sheet');
     showError(err);
   } finally {
     btn.disabled = false;
@@ -288,63 +349,21 @@ async function onSign() {
 }
 
 // ---------- height tiers (Cherry split view) ----------
-// Sections that move into "More options" on short screens. Each returns to its anchor in the full layout.
-const MOVABLE = ['descField', 'buyField', 'advBody', 'feeLine'] as const;
-const anchors = new Map<string, Comment>();
 let tier: Tier = 'full';
-
 function isTyping() {
   const a = document.activeElement;
   return !!a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'file', 'radio'].includes((a as HTMLInputElement).type)));
 }
-
-function applyTier(next: Tier) {
-  if (next === tier && document.documentElement.dataset.tier) return;
-  tier = next;
-  document.documentElement.dataset.tier = tier;
-  for (const id of MOVABLE) anchors.get(id)!.after($(id)); // back home
-  const more = $('moreBody');
-  if (tier !== 'full') more.append($('advBody'));
-  if (tier === 'minimal') {
-    more.prepend($('descField'));
-    more.append($('buyField'), $('advBody'), $('feeLine'));
-  }
-  $('advFold').hidden = tier !== 'full';
-  input('name').placeholder = tier === 'full' ? 'Cherry Blossom' : 'Coin name';
-  input('ticker').placeholder = tier === 'full' ? 'PETAL' : 'TICKER';
-}
-
 function measureTier() {
-  applyTier(nextTier(tier, $('appRoot').getBoundingClientRect().height, isTyping()));
-}
-
-function initTiers() {
-  for (const id of MOVABLE) {
-    const a = document.createComment(id);
-    $(id).before(a);
-    anchors.set(id, a);
-  }
-  tier = 'full';
-  measureTier();
-  // Live while the split handle is dragged.
-  new ResizeObserver(() => measureTier()).observe($('appRoot'));
-  // Keyboard closed / focus left: apply whatever height we have now.
-  document.addEventListener('focusout', () => setTimeout(measureTier, 0));
-  // (i) icons show their info text.
-  document.querySelectorAll<HTMLButtonElement>('.info').forEach((b) => {
-    b.onclick = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      toast($(b.dataset.info!).textContent ?? '', 'info', 5000);
-    };
-  });
+  tier = nextTier(tier, $('appRoot').getBoundingClientRect().height, isTyping());
+  document.documentElement.dataset.tier = tier;
 }
 
 // ---------- boot ----------
 async function loadPumpLimits() {
   try {
     const g = await pump.fetchGlobal();
-    limits = { mayhemEnabled: g.mayhemModeEnabled, creatorFeeConfigurable: g.creatorFeeConfigurable, maxCreatorFeeBps: g.maxConfigurableCreatorFeeBps.toNumber() };
+    limits = { mayhemEnabled: g.mayhemModeEnabled };
   } catch {
     limits = null;
   }
@@ -367,7 +386,7 @@ async function connectCherry() {
     return renderChip();
   }
   try {
-    cherry = new CherryMiniApp({ initTimeout: 8000 });
+    const cherry = new CherryMiniApp({ initTimeout: 8000 });
     await cherry.init();
     const sdkWallet = cherry.paymentWallet ?? cherry.wallet.publicKey ?? null;
     const token = cherry.launchToken;
@@ -388,8 +407,24 @@ async function connectCherry() {
 }
 
 function boot() {
-  initTiers();
   $('feeLine').textContent = FEE_LINE;
+  (['name', 'ticker', 'description', 'website', 'x', 'telegram', 'customMint'] as const).forEach(bindText);
+  input('media').addEventListener('change', () => setMedia(input('media').files?.[0] ?? null));
+  input('banner').addEventListener('change', () => setBanner(input('banner').files?.[0] ?? null));
+  document.querySelectorAll<HTMLButtonElement>('[data-pair]').forEach((b) => (b.onclick = () => setPair(b.dataset.pair as Pair)));
+  document.querySelectorAll<HTMLButtonElement>('[data-rewards]').forEach((b) => {
+    b.onclick = () => {
+      if (b.disabled) return;
+      form.rewards = b.dataset.rewards as LaunchForm['rewards'];
+      render();
+    };
+  });
+  input('mayhem').addEventListener('change', () => {
+    form.mayhem = input('mayhem').checked;
+    touched.add('mayhem');
+    render();
+  });
+
   for (const amount of QUICK_BUYS) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -397,23 +432,33 @@ function boot() {
     b.textContent = amount;
     b.onclick = () => {
       form.initialBuy = input('initialBuy').value = form.initialBuy.trim() === amount ? '' : amount;
-      touched.add('initialBuy');
-      render();
+      renderBuy();
     };
     $('buyChips').append(b);
   }
-  (['name', 'ticker', 'description', 'website', 'x', 'telegram', 'customMint', 'initialBuy', 'creatorFeePct'] as const).forEach(bindText);
-  input('image').addEventListener('change', () => setImage(input('image').files?.[0] ?? null));
-  document.querySelectorAll<HTMLButtonElement>('[data-pair]').forEach((b) => (b.onclick = () => setPair(b.dataset.pair as Pair)));
-  input('mayhem').addEventListener('change', () => {
-    form.mayhem = input('mayhem').checked;
-    touched.add('mayhem');
-    render();
+  input('initialBuy').addEventListener('input', () => {
+    form.initialBuy = input('initialBuy').value;
+    renderBuy();
   });
-  $('create').onclick = () => void onCreate();
+
+  $('create').onclick = onCreate;
+  $('buyContinue').onclick = () => void onBuyDone(false);
+  $('buySkip').onclick = () => void onBuyDone(true);
   $('sign').onclick = () => void onSign();
-  document.querySelectorAll<HTMLElement>('[data-close]').forEach((el) => (el.onclick = closeSheet));
-  document.addEventListener('keydown', (e) => e.key === 'Escape' && !$('sheet').hidden && closeSheet());
+  $('sheetBack').onclick = () => {
+    closeSheet('sheet');
+    openBuySheet();
+  };
+  document.querySelectorAll<HTMLElement>('[data-close]').forEach((el) => (el.onclick = () => closeSheet(el.dataset.close as 'buySheet' | 'sheet')));
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('sheet').hidden) closeSheet('sheet');
+    else if (!$('buySheet').hidden) closeSheet('buySheet');
+  });
+
+  measureTier();
+  new ResizeObserver(measureTier).observe($('appRoot')); // live while Cherry's split handle is dragged
+  document.addEventListener('focusout', () => setTimeout(measureTier, 0)); // keyboard closed
 
   render();
   renderChip();

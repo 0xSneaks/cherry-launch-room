@@ -2,11 +2,24 @@
 import { APP_SHARE_BPS, USER_SHARE_BPS } from '../spike/constants';
 
 /**
- * Which harness variant the main form launches with. 'engine' = the full-option launch engine
- * (src/launch/engine.ts) that harness F/G/H exercise: create (+ first buy) → 95/5 fee split + reference,
- * all under one signAllTransactions approval. Change only after Sneaks approves a variant from the harness.
+ * Which harness variant each form choice launches with. All of them build through the unchanged engine
+ * (src/launch/engine.ts), the same builder harness F/G/H call:
+ *   SOL        → C + D shapes: [create (+ buy)] then [95/5 split + reference]
+ *   USDC       → F
+ *   Custom     → H (no custom creator fee from this form)
+ *   Mayhem on  → G (SOL or USDC pair)
  */
-export const LAUNCH_VARIANT = 'engine' as const;
+export type HarnessVariant = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
+export const ROUTES = { SOL: ['C', 'D'], USDC: ['F'], CUSTOM: ['H'], MAYHEM: ['G'] } as const satisfies Record<string, readonly HarnessVariant[]>;
+
+/**
+ * Harness results from Sneaks's "Copy results table" in Cherry. UNKNOWN until he pastes it: no table exists yet
+ * (checked ai-coms + the spike session, 2026-11-09). Dry-run signing is allowed either way (it IS the test).
+ * A future live mode must refuse any route whose variants are not all 'signed'.
+ */
+export const HARNESS_RESULTS: Record<HarnessVariant, 'untested' | 'signed' | 'refused'> = {
+  A: 'untested', B: 'untested', C: 'untested', D: 'untested', E: 'untested', F: 'untested', G: 'untested', H: 'untested',
+};
 
 /**
  * 'dry-run' = Cherry signs, the signed bytes are dropped, nothing is sent.
@@ -29,8 +42,10 @@ export const QUICK_BUYS = ['0.1', '0.5', '1'] as const;
 /** ASSUMPTION: pump.fun's create form caps the description around this; metadata JSON only, not on-chain. */
 export const DESCRIPTION_MAX = 500;
 
-/** ASSUMPTION: pump.fun accepts images up to 15 MB. */
+/** ASSUMPTION (pump.fun create form, not verified here): images ≤ 15 MB, videos ≤ 30 MB, banner ≤ 5 MB. */
 export const IMAGE_MAX_BYTES = 15 * 1024 * 1024;
+export const VIDEO_MAX_BYTES = 30 * 1024 * 1024;
+export const BANNER_MAX_BYTES = 5 * 1024 * 1024;
 
 const pct = (bps: number) => `${bps / 100}%`;
 

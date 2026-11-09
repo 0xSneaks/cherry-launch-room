@@ -2,11 +2,12 @@
 import { PublicKey } from '@solana/web3.js';
 import BN from 'bn.js';
 import { LIMITS } from '../launch/policy';
-import { DESCRIPTION_MAX, IMAGE_MAX_BYTES } from './config';
+import { BANNER_MAX_BYTES, DESCRIPTION_MAX, IMAGE_MAX_BYTES, VIDEO_MAX_BYTES } from './config';
 
 export type Pair = 'SOL' | 'USDC' | 'CUSTOM';
+export type Rewards = 'creator' | 'holders';
 
-export interface ImageInfo {
+export interface FileInfo {
   type: string;
   size: number;
 }
@@ -15,24 +16,25 @@ export interface LaunchForm {
   name: string;
   ticker: string;
   description: string;
-  image: ImageInfo | null;
+  /** Coin image or video. */
+  media: FileInfo | null;
+  /** Optional wide banner image. */
+  banner: FileInfo | null;
   website: string;
   x: string;
   telegram: string;
   pair: Pair;
   customMint: string;
-  /** Decimal string in the pair's unit. Empty = no initial buy. */
-  initialBuy: string;
+  /** Who gets creator rewards. 'holders' is not available yet (no 95/5 split possible). */
+  rewards: Rewards;
   mayhem: boolean;
-  /** Percent, e.g. "1.5". Empty = Pump default. Custom pairs only. */
-  creatorFeePct: string;
+  /** Decimal string in the pair's unit, set in the buy sheet. Empty = no initial buy. */
+  initialBuy: string;
 }
 
 /** What Pump allows right now (read from chain). null = not loaded. */
 export interface PumpLimits {
   mayhemEnabled: boolean;
-  creatorFeeConfigurable: boolean;
-  maxCreatorFeeBps: number;
 }
 
 export type Field = keyof LaunchForm;
@@ -42,15 +44,16 @@ export const emptyForm = (): LaunchForm => ({
   name: '',
   ticker: '',
   description: '',
-  image: null,
+  media: null,
+  banner: null,
   website: '',
   x: '',
   telegram: '',
   pair: 'SOL',
   customMint: '',
-  initialBuy: '',
+  rewards: 'creator',
   mayhem: false,
-  creatorFeePct: '',
+  initialBuy: '',
 });
 
 const byteLen = (s: string) => new TextEncoder().encode(s).length;
@@ -85,13 +88,6 @@ export function parseAmount(raw: string, decimals: number): BN {
   return units;
 }
 
-/** Percent string → bps. "1.25" → 125. */
-export function pctToBps(raw: string): number {
-  const n = Number(raw.trim());
-  if (!/^\d*\.?\d{0,2}$/.test(raw.trim()) || !Number.isFinite(n)) return NaN;
-  return Math.round(n * 100);
-}
-
 function httpsUrl(s: string, hosts?: string[]): boolean {
   try {
     const u = new URL(s.trim());
@@ -102,47 +98,60 @@ function httpsUrl(s: string, hosts?: string[]): boolean {
   }
 }
 
-/** The three fields that gate the Create button. */
+const IMAGE_TYPES = /^image\/(png|jpe?g|gif|webp)$/;
+const VIDEO_TYPES = /^video\/(mp4|webm)$/;
+export const isVideo = (f: FileInfo | null) => !!f && VIDEO_TYPES.test(f.type);
+
+export function mediaError(f: FileInfo | null): string | undefined {
+  if (!f) return 'Add an image or video.';
+  if (IMAGE_TYPES.test(f.type)) return f.size > IMAGE_MAX_BYTES ? 'Images must be 15 MB or less.' : undefined;
+  if (VIDEO_TYPES.test(f.type)) return f.size > VIDEO_MAX_BYTES ? 'Videos must be 30 MB or less.' : undefined;
+  return 'Use PNG, JPG, GIF, WebP, MP4 or WebM.';
+}
+
+/** The three fields that gate the Create button: name, ticker, image. */
 export function requiredErrors(f: LaunchForm): FieldErrors {
   const e: FieldErrors = {};
-  if (!f.name.trim()) e.name = 'Name is required.';
+  if (!f.name.trim()) e.name = 'Give your coin a name.';
   else if (byteLen(f.name) > LIMITS.name) e.name = `Max ${LIMITS.name} characters.`;
-  if (!f.ticker) e.ticker = 'Ticker is required.';
+  if (!f.ticker) e.ticker = 'Add a ticker.';
   else if (byteLen(f.ticker) > LIMITS.symbol) e.ticker = `Max ${LIMITS.symbol} characters.`;
-  if (!f.image) e.image = 'Add an image.';
-  else if (!/^image\/(png|jpe?g|gif|webp)$/.test(f.image.type)) e.image = 'Use PNG, JPG, GIF or WebP.';
-  else if (f.image.size > IMAGE_MAX_BYTES) e.image = 'Image must be 15 MB or less.';
+  const m = mediaError(f.media);
+  if (m) e.media = m;
   return e;
 }
 
-/** Every inline error. `decimals` = pair token decimals (SOL 9, USDC 6, custom from chain). */
-export function validateForm(f: LaunchForm, limits: PumpLimits | null, decimals: number): FieldErrors {
+/** Every inline error on the main form (the buy amount is checked in the buy sheet). */
+export function validateForm(f: LaunchForm, limits: PumpLimits | null): FieldErrors {
   const e = requiredErrors(f);
   if (f.description.length > DESCRIPTION_MAX) e.description = `Max ${DESCRIPTION_MAX} characters.`;
+  if (f.banner) {
+    if (!IMAGE_TYPES.test(f.banner.type)) e.banner = 'Banner must be PNG, JPG, GIF or WebP.';
+    else if (f.banner.size > BANNER_MAX_BYTES) e.banner = 'Banner must be 5 MB or less.';
+  }
   if (f.website && !httpsUrl(f.website)) e.website = 'Use a full https:// link.';
   if (f.x && !httpsUrl(f.x, ['x.com', 'twitter.com'])) e.x = 'Use an https://x.com/… link.';
   if (f.telegram && !httpsUrl(f.telegram, ['t.me', 'telegram.me'])) e.telegram = 'Use an https://t.me/… link.';
   if (f.pair === 'CUSTOM' && !isValidMint(f.customMint)) {
     e.customMint = f.customMint.trim() ? 'Not a valid token mint address.' : 'Paste the pair token mint.';
   }
-  if (f.initialBuy.trim()) {
-    try {
-      parseAmount(f.initialBuy, decimals);
-    } catch (err) {
-      e.initialBuy = (err as Error).message;
-    }
-  }
+  if (f.rewards === 'holders') e.rewards = 'Holder rewards are coming soon.';
   if (f.mayhem) {
-    if (f.pair === 'CUSTOM') e.mayhem = 'Mayhem mode only works with a SOL or USDC pair.';
+    if (f.pair === 'CUSTOM') e.mayhem = 'Mayhem mode works with SOL or USDC only.';
     else if (limits && !limits.mayhemEnabled) e.mayhem = 'Pump has mayhem mode off right now.';
   }
-  if (f.creatorFeePct.trim()) {
-    const bps = pctToBps(f.creatorFeePct);
-    if (f.pair !== 'CUSTOM') e.creatorFeePct = 'Custom creator fee only works on custom pairs.';
-    else if (!limits?.creatorFeeConfigurable) e.creatorFeePct = 'Pump has custom creator fees off right now.';
-    else if (!(bps >= 1 && bps <= limits.maxCreatorFeeBps)) e.creatorFeePct = `Between 0.01% and ${limits.maxCreatorFeeBps / 100}%.`;
-  }
   return e;
+}
+
+/** Buy-sheet amount check. Empty = skip. */
+export function buyError(raw: string, decimals: number): string | undefined {
+  if (!raw.trim()) return undefined;
+  try {
+    parseAmount(raw, decimals);
+    return undefined;
+  } catch (err) {
+    return (err as Error).message;
+  }
 }
 
 export const hasErrors = (e: FieldErrors) => Object.keys(e).length > 0;

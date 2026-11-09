@@ -3,11 +3,10 @@
 // the signed bytes are dropped, nothing is sent.
 import type { OnlinePumpSdk, ResolvedQuoteMint } from '@pump-fun/pump-sdk';
 import { Keypair, PublicKey, Transaction, VersionedTransaction, type Connection } from '@solana/web3.js';
-import BN from 'bn.js';
 import { buildLaunch as buildLaunchTxs, type LaunchRequest } from '../launch/engine';
 import { explainLaunchError } from '../launch/errors';
-import { DRY_RUN_LABEL, DRY_RUN_METADATA_URI, FEE_SPLIT_SHORT, LAUNCH_MODE, LAUNCH_VARIANT, USDC_MINT } from './config';
-import { hasErrors, parseAmount, pctToBps, unitOf, validateForm, type FieldErrors, type LaunchForm, type PumpLimits } from './form';
+import { DRY_RUN_LABEL, DRY_RUN_METADATA_URI, FEE_SPLIT_SHORT, LAUNCH_MODE, ROUTES, USDC_MINT, type HarnessVariant } from './config';
+import { buyError, hasErrors, parseAmount, unitOf, validateForm, type FieldErrors, type LaunchForm, type PumpLimits } from './form';
 
 /** The slice of the Cherry SDK we use (CherryMiniApp.wallet). */
 export interface CherrySigner {
@@ -37,6 +36,8 @@ export interface LaunchSummary {
   steps: string[];
   approvals: 1;
   dryRun: boolean;
+  /** Harness variants this launch's shape matches (see ROUTES). */
+  variants: readonly HarnessVariant[];
 }
 
 export interface SignResult {
@@ -62,6 +63,12 @@ export class FeeWalletIsSignerError extends Error {
     super("This wallet is PetalDeck's fee wallet. Launch from a different wallet.");
     this.name = 'FeeWalletIsSignerError';
   }
+}
+
+/** Harness variants a form maps to. Mayhem wins (G), then the pair. */
+export function routeFor(form: Pick<LaunchForm, 'pair' | 'mayhem'>): readonly HarnessVariant[] {
+  if (form.mayhem) return ROUTES.MAYHEM;
+  return ROUTES[form.pair];
 }
 
 export const shortKey = (k: string) => `${k.slice(0, 4)}…${k.slice(-4)}`;
@@ -107,22 +114,19 @@ export function createLauncher(deps: LauncherDeps) {
       pump.fetchQuoteControl().catch(() => null),
       connection.getLatestBlockhash('confirmed'),
     ]);
-    const limits: PumpLimits = {
-      mayhemEnabled: global.mayhemModeEnabled,
-      creatorFeeConfigurable: global.creatorFeeConfigurable,
-      maxCreatorFeeBps: global.maxConfigurableCreatorFeeBps.toNumber(),
-    };
+    const limits: PumpLimits = { mayhemEnabled: global.mayhemModeEnabled };
 
     let quote: ResolvedQuoteMint | null = null;
     if (form.pair === 'USDC') quote = await pump.resolveQuoteMint(new PublicKey(USDC_MINT));
     if (form.pair === 'CUSTOM') quote = await pump.resolveQuoteMint(new PublicKey(form.customMint.trim()));
     const decimals = quote?.decimals ?? 9;
 
-    const errs = validateForm(form, limits, decimals);
+    const errs = validateForm(form, limits);
+    const buyErr = buyError(form.initialBuy, decimals);
+    if (buyErr) errs.initialBuy = buyErr;
     if (hasErrors(errs)) throw new FormInvalidError(errs);
 
     const devBuy = form.initialBuy.trim() ? parseAmount(form.initialBuy, decimals) : null;
-    const creatorFeeBps = form.creatorFeePct.trim() ? new BN(pctToBps(form.creatorFeePct)) : null;
     let mint: Keypair | null = Keypair.generate(); // memory only, dropped after signing
 
     const req: LaunchRequest = {
@@ -132,8 +136,8 @@ export function createLauncher(deps: LauncherDeps) {
       quote,
       devBuy,
       mayhemMode: form.mayhem,
-      creatorFeeBps,
-      holderReward: false,
+      creatorFeeBps: null, // H without a custom fee: this form has no creator-fee field
+      holderReward: false, // 'Holders' is shown as Soon: no harness variant covers it with the 95/5 split
     };
     const quoteTransferFee = quote && quote.source !== 'sol' ? await pump.fetchQuoteTransferFee(quote.mint).catch(() => null) : null;
     const plan = await buildLaunchTxs(req, { global, feeConfig, quoteControl, quoteTransferFee, recentBlockhash: blockhash, appFeeRecipient: feeRecipient });
@@ -150,11 +154,12 @@ export function createLauncher(deps: LauncherDeps) {
       steps: plan.steps,
       approvals: 1,
       dryRun: LAUNCH_MODE === 'dry-run',
+      variants: routeFor(form),
     };
 
     async function sign(): Promise<SignResult> {
       if (!mint) throw new Error('This launch was already signed. Start again.');
-      if (LAUNCH_MODE !== 'dry-run' || LAUNCH_VARIANT !== 'engine') throw new Error('Only dry-run is enabled.');
+      if (LAUNCH_MODE !== 'dry-run') throw new Error('Only dry-run is enabled.');
       try {
         const signed =
           plan.txs.length === 1
