@@ -219,7 +219,9 @@ async function exchangeLaunchToken(token: string) {
 }
 
 async function boot() {
-  const inCherry = isInsideCherry();
+  // strict: only Cherry's own markers (window.__cherry or ?cherry_embed=1). Wallet in-app browsers are
+  // React Native WebViews and would otherwise look like Cherry's mobile app.
+  const inCherry = isInsideCherry({ strict: true });
   $('env').textContent = inCherry ? 'Inside Cherry' : 'Not inside Cherry — open from the Cherry app to sign.';
   const titles: [Variant | EngineVariant, string][] = [
     ...(Object.keys(VARIANTS) as Variant[]).map((v) => [v, VARIANTS[v].title] as [Variant, string]),
