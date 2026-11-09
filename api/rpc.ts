@@ -8,6 +8,7 @@ export const ALLOWED_METHODS = new Set([
   'getAccountInfo',
   'getMultipleAccounts',
   'getBalance',
+  'getEpochInfo', // Token-2022 quote transfer fee (pump SDK fetchQuoteTransferFee)
   'getMinimumBalanceForRentExemption',
   'simulateTransaction',
 ]);

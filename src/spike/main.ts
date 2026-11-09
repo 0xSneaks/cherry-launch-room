@@ -5,7 +5,10 @@ import { Buffer } from 'buffer';
 (globalThis as { Buffer?: typeof Buffer }).Buffer ??= Buffer;
 
 import { CherryMiniApp, isInsideCherry } from '@cherrydotfun/miniapp-sdk';
-import { OnlinePumpSdk, type FeeConfig, type Global } from '@pump-fun/pump-sdk';
+import { OnlinePumpSdk, type FeeConfig, type Global, type ResolvedQuoteMint } from '@pump-fun/pump-sdk';
+import BN from 'bn.js';
+import { buildLaunch, type LaunchRequest } from '../launch/engine';
+import { explainLaunchError } from '../launch/errors';
 import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { VARIANTS, buildVariant, fitsLegacy, serializedSize, type Variant } from './build';
 import { SPIKE_COIN } from './coin';
@@ -53,33 +56,80 @@ function render() {
       : '';
 }
 
-async function run(variant: Variant) {
+const USDC = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+
+/** F–H go through the REAL launch engine (src/launch), with live Pump state. */
+const ENGINE_VARIANTS = {
+  F: 'USDC pair: create + 1 USDC first buy + 95/5 split (one approval)',
+  G: 'Mayhem mode: create + 0.01 SOL first buy + 95/5 split',
+  H: 'Custom pair (mint below): create + 95/5 split (+2.5% creator fee if Pump allows)',
+} as const;
+type EngineVariant = keyof typeof ENGINE_VARIANTS;
+const isEngine = (v: string): v is EngineVariant => v in ENGINE_VARIANTS;
+
+async function engineTxs(variant: EngineVariant, wallet: PublicKey, mint: PublicKey, appFeeRecipient: PublicKey) {
+  const [global, feeConfig, quoteControl, { blockhash }] = await Promise.all([
+    pump.fetchGlobal(),
+    pump.fetchFeeConfig().catch(() => null),
+    pump.fetchQuoteControl().catch(() => null),
+    connection.getLatestBlockhash('confirmed'),
+  ]);
+  let quote: ResolvedQuoteMint | null = null;
+  if (variant === 'F') quote = await pump.resolveQuoteMint(USDC);
+  if (variant === 'H') {
+    const raw = ($('pairMint') as HTMLInputElement).value.trim();
+    if (!raw) throw new Error('Paste a pair mint for H (a pump coin or a listed token).');
+    quote = await pump.resolveQuoteMint(new PublicKey(raw));
+  }
+  const exotic = quote?.source === 'quoteControl' || quote?.source === 'pumpCoin';
+  const req: LaunchRequest = {
+    wallet,
+    mint,
+    coin: SPIKE_COIN,
+    quote,
+    devBuy: variant === 'F' ? new BN(1_000_000) : variant === 'G' ? new BN(10_000_000) : null,
+    mayhemMode: variant === 'G',
+    creatorFeeBps: exotic && global.creatorFeeConfigurable ? BN.min(new BN(250), global.maxConfigurableCreatorFeeBps) : null,
+    holderReward: false,
+  };
+  const quoteTransferFee = quote && quote.source !== 'sol' ? await pump.fetchQuoteTransferFee(quote.mint).catch(() => null) : null;
+  const plan = await buildLaunch(req, { global, feeConfig, quoteControl, quoteTransferFee, recentBlockhash: blockhash, appFeeRecipient });
+  log(`${variant}: ${plan.steps.join(' → ')}${quote ? ` · pair ${quote.source}` : ''}`);
+  return plan.txs;
+}
+
+async function run(variant: Variant | EngineVariant) {
   const wallet = signerWallet();
   if (!cherry || !wallet) return log('No Cherry wallet. Open this page inside Cherry.');
   if (auth.kind !== 'signed-in') return log('Not signed in: the server has not verified your launch token.');
-  const spec = VARIANTS[variant];
+  const spec = isEngine(variant) ? null : VARIANTS[variant];
   document.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
   let mint: Keypair | null = Keypair.generate(); // memory only, dropped after the run
   const row: SpikeRow = { variant, result: 'ERROR', bytes: [], at: new Date().toISOString() };
   try {
     const appFeeRecipient = new PublicKey(($('feeRecipient') as HTMLInputElement).value.trim() || APP_FEE_WALLET);
     if (appFeeRecipient.equals(wallet)) throw new Error('5% recipient equals your wallet: paste another address you control.');
-    if (spec.txs.some((t) => t.buy) && !pumpState) {
-      const [global, feeConfig] = await Promise.all([pump.fetchGlobal(), pump.fetchFeeConfig().catch(() => null)]);
-      pumpState = { global, feeConfig };
+    let txs: Transaction[];
+    if (!spec) {
+      txs = await engineTxs(variant as EngineVariant, wallet, mint.publicKey, appFeeRecipient);
+    } else {
+      if (spec.txs.some((t) => t.buy) && !pumpState) {
+        const [global, feeConfig] = await Promise.all([pump.fetchGlobal(), pump.fetchFeeConfig().catch(() => null)]);
+        pumpState = { global, feeConfig };
+      }
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      txs = await buildVariant(variant as Variant, {
+        wallet,
+        mint: mint.publicKey,
+        recentBlockhash: blockhash,
+        coin: SPIKE_COIN,
+        global: pumpState?.global,
+        feeConfig: pumpState?.feeConfig,
+        appFeeRecipient,
+      });
     }
-    const { blockhash } = await connection.getLatestBlockhash('confirmed');
-    const txs = await buildVariant(variant, {
-      wallet,
-      mint: mint.publicKey,
-      recentBlockhash: blockhash,
-      coin: SPIKE_COIN,
-      global: pumpState?.global,
-      feeConfig: pumpState?.feeConfig,
-      appFeeRecipient,
-    });
     row.bytes = txs.map(serializedSize);
-    if (!spec.signable || !txs.every(fitsLegacy)) {
+    if ((spec && !spec.signable) || !txs.every(fitsLegacy)) {
       row.result = 'SKIPPED';
       row.reason = 'over 1232 B: measured only';
       return;
@@ -96,11 +146,12 @@ async function run(variant: Variant) {
     row.returnedBytes = signed.map((b) => b.length);
     // Prove the order works: wallet signed first, mint co-signs after, every signature verifies.
     const first = Transaction.from(signed[0]);
-    if (VARIANTS[variant].txs[0].create) first.partialSign(mint);
+    if (!spec || spec.txs[0].create) first.partialSign(mint); // tx 0 is always the create
     row.mintCosignOk = first.verifySignatures(true);
     signed.fill(new Uint8Array(0)); // drop the signed bytes
   } catch (err) {
     Object.assign(row, refusalFields(err));
+    if (row.result === 'ERROR') row.reason = `${explainLaunchError(err)} (${row.reason ?? ''})`.slice(0, 200);
   } finally {
     mint = null;
     rows.push(row);
@@ -108,6 +159,23 @@ async function run(variant: Variant) {
     render();
     setVariantButtons(auth.kind === 'signed-in');
     ($('copy') as HTMLButtonElement).disabled = false;
+  }
+}
+
+/** What Pump allows right now, read from chain (Global + QuoteControl). */
+async function showPumpSettings() {
+  try {
+    const [global, pairs] = await Promise.all([pump.fetchGlobal(), pump.fetchSupportedQuoteMints()]);
+    const name = (m: PublicKey) => (m.equals(USDC) ? 'USDC' : `${m.toBase58().slice(0, 4)}…`);
+    const listed = pairs.map((p) => (p.source === 'sol' ? 'SOL' : `${name(p.mint)} (${p.source})`)).join(', ');
+    const qc = pairs.find((p) => p.source === 'quoteControl');
+    if (qc && !($('pairMint') as HTMLInputElement).value) ($('pairMint') as HTMLInputElement).value = qc.mint.toBase58();
+    $('pump').textContent =
+      `Pump now: pairs ${listed}; pump-coin pairs ${global.maxCurveDepth ? 'up to depth ' + global.maxCurveDepth : 'OFF'}; ` +
+      `mayhem ${global.mayhemModeEnabled ? 'on' : 'OFF'}; custom creator fee ${global.creatorFeeConfigurable ? 'on, max ' + global.maxConfigurableCreatorFeeBps.toNumber() / 100 + '%' : 'OFF'}; ` +
+      `holder rewards ${global.isHolderRewardEnabled ? 'on' : 'OFF'}; new coins ${global.createV2Enabled ? 'on' : 'PAUSED'}.`;
+  } catch (e) {
+    $('pump').textContent = `Could not read Pump settings: ${(e as Error).message}`.slice(0, 160);
   }
 }
 
@@ -149,12 +217,17 @@ async function exchangeLaunchToken(token: string) {
 async function boot() {
   const inCherry = isInsideCherry();
   $('env').textContent = inCherry ? 'Inside Cherry' : 'Not inside Cherry — open from the Cherry app to sign.';
-  for (const v of Object.keys(VARIANTS) as Variant[]) {
+  const titles: [Variant | EngineVariant, string][] = [
+    ...(Object.keys(VARIANTS) as Variant[]).map((v) => [v, VARIANTS[v].title] as [Variant, string]),
+    ...(Object.keys(ENGINE_VARIANTS) as EngineVariant[]).map((v) => [v, ENGINE_VARIANTS[v]] as [EngineVariant, string]),
+  ];
+  for (const [v, title] of titles) {
     const b = document.createElement('button');
-    b.textContent = `${v} · ${VARIANTS[v].title}`;
+    b.textContent = `${v} · ${title}`;
     b.onclick = () => void run(v);
     $('variants').append(b);
   }
+  void showPumpSettings();
   $('copy').onclick = () => void navigator.clipboard?.writeText(toMarkdown(rows)).then(() => log('Table copied.'));
   ($('feeRecipient') as HTMLInputElement).value = APP_FEE_WALLET;
   render();

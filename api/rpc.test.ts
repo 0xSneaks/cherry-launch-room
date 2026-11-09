@@ -6,7 +6,7 @@ describe('rpc proxy allowlist', () => {
     expect(checkCall({ method, params: [] })).toMatch(/not allowed/);
   });
   it('allows the reads the spike needs', () => {
-    for (const method of ['getLatestBlockhash', 'getAccountInfo', 'getMultipleAccounts', 'simulateTransaction']) {
+    for (const method of ['getLatestBlockhash', 'getAccountInfo', 'getMultipleAccounts', 'getEpochInfo', 'simulateTransaction']) {
       expect(checkCall({ method, params: [] })).toBeNull();
     }
   });

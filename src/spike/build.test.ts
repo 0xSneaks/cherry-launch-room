@@ -132,10 +132,11 @@ describe('fee share instructions', () => {
 });
 
 describe('no-broadcast guard', () => {
-  it('spike + api source never calls a send method', () => {
+  it('spike + launch engine + api source never calls a send method', () => {
     const files = [
       ...readdirSync('src/spike').map((f) => join('src/spike', f)),
       ...readdirSync('api').map((f) => join('api', f)),
+      ...readdirSync('src/launch').map((f) => join('src/launch', f)),
     ].filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith('.test.ts'));
     for (const f of files) {
       const src = readFileSync(f, 'utf8');

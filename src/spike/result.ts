@@ -1,9 +1,9 @@
 import { getBridgeError } from '@cherrydotfun/miniapp-sdk';
-import type { Variant } from './build';
 
 /** One row of the spike table. Never holds signed bytes or signatures. */
 export interface SpikeRow {
-  variant: Variant;
+  /** A–E: spike builders · F–H: the real launch engine. */
+  variant: string;
   result: 'SIGNED' | 'REFUSED' | 'SKIPPED' | 'ERROR';
   code?: string;
   policyCode?: string;
