@@ -26,6 +26,7 @@ import {
   type Pair,
   type PumpLimits,
 } from './form';
+import { nextTier, type Tier } from './tiers';
 import { FeeWalletIsSignerError, FormInvalidError, createLauncher, shortKey, type CherrySigner, type LaunchSummary, type PreparedLaunch } from './launch';
 
 // Hidden dev flag: /?debug=1 opens the A–H test harness (keeps Cherry's own params).
@@ -286,6 +287,59 @@ async function onSign() {
   }
 }
 
+// ---------- height tiers (Cherry split view) ----------
+// Sections that move into "More options" on short screens. Each returns to its anchor in the full layout.
+const MOVABLE = ['descField', 'buyField', 'advBody', 'feeLine'] as const;
+const anchors = new Map<string, Comment>();
+let tier: Tier = 'full';
+
+function isTyping() {
+  const a = document.activeElement;
+  return !!a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !['checkbox', 'file', 'radio'].includes((a as HTMLInputElement).type)));
+}
+
+function applyTier(next: Tier) {
+  if (next === tier && document.documentElement.dataset.tier) return;
+  tier = next;
+  document.documentElement.dataset.tier = tier;
+  for (const id of MOVABLE) anchors.get(id)!.after($(id)); // back home
+  const more = $('moreBody');
+  if (tier !== 'full') more.append($('advBody'));
+  if (tier === 'minimal') {
+    more.prepend($('descField'));
+    more.append($('buyField'), $('advBody'), $('feeLine'));
+  }
+  $('advFold').hidden = tier !== 'full';
+  input('name').placeholder = tier === 'full' ? 'Cherry Blossom' : 'Coin name';
+  input('ticker').placeholder = tier === 'full' ? 'PETAL' : 'TICKER';
+}
+
+function measureTier() {
+  applyTier(nextTier(tier, $('appRoot').getBoundingClientRect().height, isTyping()));
+}
+
+function initTiers() {
+  for (const id of MOVABLE) {
+    const a = document.createComment(id);
+    $(id).before(a);
+    anchors.set(id, a);
+  }
+  tier = 'full';
+  measureTier();
+  // Live while the split handle is dragged.
+  new ResizeObserver(() => measureTier()).observe($('appRoot'));
+  // Keyboard closed / focus left: apply whatever height we have now.
+  document.addEventListener('focusout', () => setTimeout(measureTier, 0));
+  // (i) icons show their info text.
+  document.querySelectorAll<HTMLButtonElement>('.info').forEach((b) => {
+    b.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toast($(b.dataset.info!).textContent ?? '', 'info', 5000);
+    };
+  });
+}
+
 // ---------- boot ----------
 async function loadPumpLimits() {
   try {
@@ -334,6 +388,7 @@ async function connectCherry() {
 }
 
 function boot() {
+  initTiers();
   $('feeLine').textContent = FEE_LINE;
   for (const amount of QUICK_BUYS) {
     const b = document.createElement('button');

@@ -183,3 +183,70 @@ input:focus, textarea:focus { border-color: var(--accent); }
 }
 .toast.error { border-color: var(--danger); }
 .toast.success { border-color: var(--accent); }
+
+/* ---------- Height tiers (Cherry split view). data-tier on <html> is set from the app root's real height. ---------- */
+.app-root { position: fixed; inset: 0; pointer-events: none; visibility: hidden; }
+.identity, .id-fields, .id-image { display: grid; gap: 16px; }
+.id-image { gap: 6px; }
+.info {
+  display: none; place-items: center; width: 28px; height: 28px; margin: -6px 0 -6px 2px; padding: 0; vertical-align: middle;
+  border-radius: 50%; border: 1px solid var(--line); background: transparent; color: var(--muted);
+  font: italic 600 13px/1 Georgia, serif; cursor: pointer;
+}
+.sheet-panel { max-height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+.sheet-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
+.sheet-body > * { flex-shrink: 0; }
+.sheet-actions { display: grid; gap: 4px; padding-top: 4px; }
+
+:root:is([data-tier='compact'], [data-tier='minimal']) {
+  .top { display: none; }
+  .form { gap: 8px; padding: 12px var(--gutter) calc(80px + env(safe-area-inset-bottom)); }
+  .field { gap: 4px; }
+  .err { font-size: 12px; }
+  .form .hint, .upload-empty strong, .upload-empty span { display: none; }
+  .info { display: inline-grid; }
+
+  .identity { grid-template-columns: 64px 1fr; align-items: start; gap: 12px; }
+  .id-fields { gap: 8px; }
+  .id-fields label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .upload { width: 64px; height: 64px; aspect-ratio: auto; max-height: none; border-radius: 12px; }
+  .upload-empty { padding: 0; }
+  .upload-empty svg { width: 24px; height: 24px; }
+  .upload-change { display: none !important; }
+
+  input:not([type='checkbox']):not([type='file']), textarea { min-height: 44px; padding: 10px 12px; }
+  #description { height: 44px; min-height: 44px; resize: none; transition: height .15s; }
+  #description:focus { height: 88px; }
+
+  .segmented { padding: 0; gap: 0; overflow: hidden; }
+  .segmented button { min-height: 40px; border-radius: 0; }
+  .chips button { min-height: 36px; }
+
+  .fold summary { min-height: 44px; padding: 0 12px; }
+  .fold-body { gap: 8px; padding: 4px 12px 12px; }
+  .switch-row { min-height: 44px; }
+  .fee-line { margin: 0; font-size: 13px; }
+  .legal { font-size: 11px; }
+
+  .bottom-bar { padding: 8px var(--gutter) calc(8px + env(safe-area-inset-bottom)); }
+  .primary { min-height: 48px; font-size: 16px; }
+  .toasts { bottom: calc(68px + env(safe-area-inset-bottom)); }
+
+  .sheet-panel { padding: 4px var(--gutter) calc(8px + env(safe-area-inset-bottom)); gap: 8px; border-radius: 14px 14px 0 0; }
+  .sheet-body { gap: 8px; }
+  .coin img { width: 40px; height: 40px; border-radius: 10px; }
+  .coin h2 { font-size: 16px; }
+  .rows > div { padding: 8px 12px; }
+  .ghost { min-height: 40px; }
+}
+
+:root[data-tier='minimal'] {
+  .sheet-panel { gap: 4px; }
+  .grabber { margin: 2px auto; }
+  .coin img { width: 32px; height: 32px; border-radius: 8px; }
+  .coin p { display: inline; margin-left: 6px; }
+  .coin > div { display: flex; align-items: baseline; min-width: 0; }
+  .rows > div { padding: 6px 12px; font-size: 14px; }
+  .sheet-body .hint { font-size: 12px; }
+  .sheet-actions .ghost { min-height: 36px; }
+}
