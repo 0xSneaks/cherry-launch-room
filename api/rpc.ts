@@ -15,6 +15,23 @@ export const ALLOWED_METHODS = new Set([
 
 const DEFAULT_RPC = 'https://api.mainnet-beta.solana.com';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * SOLANA_RPC_URL may hold a full https URL or, as pasted from the Helius dashboard,
+ * only the Helius API key (a UUID). Anything else falls back to public mainnet.
+ */
+export function upstreamUrl(value: string | undefined): string {
+  const v = value?.trim() ?? '';
+  if (UUID.test(v)) return `https://mainnet.helius-rpc.com/?api-key=${v}`;
+  try {
+    if (new URL(v).protocol === 'https:') return v;
+  } catch {
+    /* not a URL */
+  }
+  return DEFAULT_RPC;
+}
+
 type RpcCall = { jsonrpc?: string; id?: unknown; method?: unknown; params?: unknown };
 
 /** Returns an error message for a disallowed call, or null when allowed. */
@@ -42,11 +59,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ jsonrpc: '2.0', id: call?.id ?? null, error: { code: -32601, message: problem } });
     }
   }
-  const upstream = await fetch(process.env.SOLANA_RPC_URL || DEFAULT_RPC, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  res.status(upstream.status).setHeader('content-type', 'application/json');
-  return res.send(await upstream.text());
+  try {
+    const upstream = await fetch(upstreamUrl(process.env.SOLANA_RPC_URL), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    res.status(upstream.status).setHeader('content-type', 'application/json');
+    return res.send(await upstream.text());
+  } catch {
+    // Never echo the upstream URL: it can carry an API key.
+    console.error('[rpc] upstream unreachable');
+    return res.status(502).json({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'RPC upstream unreachable' } });
+  }
 }
