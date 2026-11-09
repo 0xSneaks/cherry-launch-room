@@ -1,5 +1,5 @@
 import { next } from "@vercel/functions";
-import { AFFILIATION_NOTICE, FRAME_ANCESTORS, PRIVACY_URL, TERMS_URL } from "./shared/cherry-listing";
+import { AFFILIATION_NOTICE, FRAME_ANCESTORS, PRIVACY_URL, TERMS_URL } from "./shared/cherry-listing.js";
 
 const blockedCountries = new Set(["CU", "IR", "KP"]);
 const ownershipPath = "/.well-known/cherry-app.json";
