@@ -73,7 +73,7 @@ export interface LaunchPlan {
 const isSol = (q: ResolvedQuoteMint | null) => !q || q.source === 'sol';
 const byteLen = (s: string) => new TextEncoder().encode(s).length;
 
-/** Every rule the program (or Launch Room policy) enforces, as plain messages. Empty = OK. */
+/** Every rule the program (or PetalDeck policy) enforces, as plain messages. Empty = OK. */
 export function validateLaunch(req: LaunchRequest, ctx: LaunchContext): string[] {
   const errs: string[] = [];
   const { coin, quote } = req;
@@ -103,7 +103,7 @@ export function validateLaunch(req: LaunchRequest, ctx: LaunchContext): string[]
   }
 
   if (req.holderReward) {
-    if (!HOLDER_REWARD_ALLOWED) errs.push('Holder rewards are not available in Launch Room yet.');
+    if (!HOLDER_REWARD_ALLOWED) errs.push('Holder rewards are not available in PetalDeck yet.');
     else if (!global.isHolderRewardEnabled) errs.push('Pump has holder rewards switched off right now.');
   }
 
@@ -249,7 +249,7 @@ export async function buildLaunch(req: LaunchRequest, ctx: LaunchContext): Promi
 
   if (feeSplit) {
     txs.push(txOf(req, ctx, [...(await feeShareInstructions(req, ctx)), referenceInstruction(req.wallet)]));
-    steps.push('Set creator fees: you 95% / Launch Room 5% (permanent)');
+    steps.push('Set creator fees: you 95% / PetalDeck 5% (permanent)');
   } else {
     const last = txs[txs.length - 1];
     const withRef = txOf(req, ctx, [...last.instructions, referenceInstruction(req.wallet)]);

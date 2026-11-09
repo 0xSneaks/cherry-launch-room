@@ -4,7 +4,7 @@
 export const CHERRY_APP_ID = '52e41534-4c7b-4237-9a16-ec8ea7a3c9dc';
 
 /**
- * Launch Room's 5% fee-share recipient (OWNER, Sneaks 2026-11-09 04:03).
+ * PetalDeck's 5% fee-share recipient (OWNER, Sneaks 2026-11-09 04:03).
  * Raw base58 only, never the .skr name.
  */
 export const APP_FEE_WALLET = 'FtuidxSaoNDeTuNTDuf9jLACVwqjgQeBwKTYC54f3GYp';

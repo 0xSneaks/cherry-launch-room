@@ -1,8 +1,8 @@
-// Launch Room policy knobs. Changing any of these changes the money path: Sneaks's yes first.
+// PetalDeck policy knobs. Changing any of these changes the money path: Sneaks's yes first.
 
 /**
  * Holder-reward coins send every creator fee to holders, so no 95/5 split is possible:
- * Launch Room earns 0 on them. OFF until Sneaks decides.
+ * PetalDeck earns 0 on them. OFF until Sneaks decides.
  */
 export const HOLDER_REWARD_ALLOWED = false;
 

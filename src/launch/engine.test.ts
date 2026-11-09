@@ -131,7 +131,7 @@ const QUOTES: Record<string, ResolvedQuoteMint | null> = {
 };
 
 const coin = {
-  name: 'Launch Room Coin',
+  name: 'PetalDeck Coin',
   symbol: 'LROOM',
   uri: 'https://ipfs.io/ipfs/bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy',
 };
@@ -185,7 +185,7 @@ describe('validation: every Pump rule, in plain words', () => {
     expect(errs({ creatorFeeBps: new BN(250), quote: qc }, { creatorFeeConfigurable: false })[0]).toMatch(/switched off/);
   });
   it('holder rewards stay OFF until Sneaks decides (no 5% possible on them)', () => {
-    expect(errs({ holderReward: true })[0]).toMatch(/not available in Launch Room/);
+    expect(errs({ holderReward: true })[0]).toMatch(/not available in PetalDeck/);
   });
   it('refuses Pump paused, a zero dev buy, and wallet == app recipient', () => {
     expect(errs({}, { createV2Enabled: false })[0]).toMatch(/paused/);
@@ -256,12 +256,12 @@ describe.each(Object.keys(QUOTES))('pair %s', (pairName) => {
 
 it('SOL + dev buy stays atomic (one create+buy tx) with normal metadata', async () => {
   const plan = await buildLaunch(req({ devBuy: new BN(10_000_000) }), ctx());
-  expect(plan.steps).toEqual(['Create coin + first buy', 'Set creator fees: you 95% / Launch Room 5% (permanent)']);
+  expect(plan.steps).toEqual(['Create coin + first buy', 'Set creator fees: you 95% / PetalDeck 5% (permanent)']);
 });
 
 it('token pair + dev buy splits the buy into its own tx, after the create', async () => {
   const plan = await buildLaunch(req({ quote: QUOTES.USDC, devBuy: new BN(10_000_000) }), ctx());
-  expect(plan.steps.map((s) => s.split(' (')[0])).toEqual(['Create coin', 'First buy', 'Set creator fees: you 95% / Launch Room 5%']);
+  expect(plan.steps.map((s) => s.split(' (')[0])).toEqual(['Create coin', 'First buy', 'Set creator fees: you 95% / PetalDeck 5%']);
 });
 
 it('create_v2 bytes are identical whether built alone or by the SDK create-and-buy helper', async () => {
