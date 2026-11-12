@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   // api/sim.js is generated (npm run build:api) from server/sim.ts.
-  { ignores: ['dist/', 'node_modules/', '.vercel/', 'api/sim.js'] },
+  { ignores: ['dist/', 'node_modules/', '.vercel/', 'api/sim.js', 'scripts/.sim-suite.mjs'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

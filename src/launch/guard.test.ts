@@ -23,3 +23,10 @@ describe('5% recipient guard', () => {
     expect(feeShareholders(user, fee).map((s) => s.shareBps)).toEqual([9500, 500]);
   });
 });
+
+describe('test page: which variants use the 5% recipient', async () => {
+  const { hasFeeShare, ALL_VARIANTS } = await import('../spike/variants');
+  it('A, B, C, E never set a split; D, F, G, H, P do', () => {
+    expect(ALL_VARIANTS.filter(hasFeeShare)).toEqual(['D', 'E', 'F', 'G', 'H', 'P']);
+  });
+});

@@ -281,3 +281,37 @@ it('serializedSize counts every signature slot', async () => {
   const plan = await buildLaunch(req(), ctx());
   expect(serializedSize(plan.txs[0])).toBe(1 + 2 * 64 + plan.txs[0].serializeMessage().length);
 });
+
+describe('token programs (F IncorrectProgramId)', () => {
+  const ATA_PROGRAM = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+  // ATA create keys: [payer, ata, owner, mint, system, tokenProgram].
+  const ataCreates = (tx: Transaction) =>
+    tx.instructions.filter((ix) => ix.programId.equals(ATA_PROGRAM)).map((ix) => ({ mint: ix.keys[3].pubkey, program: ix.keys[5].pubkey }));
+
+  it('USDC pair: new pump mint ATA uses Token-2022, USDC ATAs use SPL Token', async () => {
+    const r = req({ quote: QUOTES.USDC, devBuy: new BN(1_000_000) });
+    const plan = await buildLaunch(r, ctx());
+    const all = plan.txs.flatMap(ataCreates);
+    expect(all.length).toBeGreaterThan(0);
+    for (const a of all) {
+      if (a.mint.equals(r.mint)) expect(a.program.equals(TOKEN_2022_PROGRAM_ID)).toBe(true);
+      else if (a.mint.equals(USDC)) expect(a.program.equals(TOKEN_PROGRAM_ID)).toBe(true);
+      else throw new Error(`unexpected ATA mint ${a.mint.toBase58()}`);
+    }
+    expect(all.some((a) => a.mint.equals(r.mint))).toBe(true);
+  });
+
+  it('token pair: fee-share tx creates the sharing vault quote ATA before update_fee_shares_v2', async () => {
+    const plan = await buildLaunch(req({ quote: QUOTES.USDC }), ctx());
+    const fee = plan.txs[plan.txs.length - 1];
+    const programs = fee.instructions.map((ix) => ix.programId.toBase58());
+    expect(programs).toEqual([PUMP_FEE_PROGRAM_ID.toBase58(), ATA_PROGRAM.toBase58(), PUMP_FEE_PROGRAM_ID.toBase58(), SystemProgram.programId.toBase58()]);
+    expect(ataCreates(fee)[0]).toEqual({ mint: USDC, program: TOKEN_PROGRAM_ID });
+    expect(serializedSize(fee)).toBeLessThanOrEqual(TX_BYTE_LIMIT);
+  });
+
+  it('SOL pair: fee-share tx has no ATA create', async () => {
+    const plan = await buildLaunch(req(), ctx());
+    expect(ataCreates(plan.txs[plan.txs.length - 1])).toEqual([]);
+  });
+});

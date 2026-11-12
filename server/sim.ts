@@ -3,15 +3,16 @@
 //
 // POST { txs: base64[] (unsigned legacy txs, signing order), fundPayer?: boolean }
 //   → { results: TxResult[] } — tx i runs on the state txs 0..i-1 left.
-//   fundPayer (Preview only): give the fee payer 5 SOL on the fork, to test program logic
-//   without a funded wallet. Production always uses the wallet's real balance.
+//   fundPayer (Preview only): give the fee payer 5 SOL and 50 USDC on the fork, to test program
+//   logic without a funded wallet. Production always uses the wallet's real balance.
 // GET ?suite=1[&variants=A,B,…][&pair=<mint>] (Preview only) → A–H suite, chained vs unchained.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { upstreamUrl } from '../api/rpc.js';
 import { rpcReader, simulateChain } from '../src/sim/fork.js';
-import { fundedWallet, runSuite, suiteMarkdown } from '../src/sim/suite.js';
-import { ALL_VARIANTS, type AnyVariant } from '../src/spike/variants.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { fundedWallet, runSuite, splTokenAccount, suiteMarkdown } from '../src/sim/suite.js';
+import { ALL_VARIANTS, USDC, type AnyVariant } from '../src/spike/variants.js';
 import { TX_BYTE_LIMIT } from '../src/spike/constants.js';
 
 export const config = { maxDuration: 60 };
@@ -72,7 +73,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const payer = txs[0].feePayer;
     const fund = isPreview() && body?.fundPayer === true && payer;
     const results = await simulateChain(read, txs, {
-      overrides: fund ? [{ pubkey: payer, account: fundedWallet() }] : [],
+      overrides: fund
+        ? [
+            { pubkey: payer, account: fundedWallet() },
+            { pubkey: getAssociatedTokenAddressSync(USDC, payer, true), account: splTokenAccount(USDC, payer, 50_000_000n) },
+          ]
+        : [],
     });
     return res.status(200).json({ results, funded: Boolean(fund) });
   } catch (e) {

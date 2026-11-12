@@ -12,6 +12,8 @@
 import { withAppReference } from '@cherrydotfun/miniapp-sdk/solana';
 import {
   PUMP_SDK,
+  creatorVaultPda,
+  feeSharingConfigPda,
   getBuyTokenAmountFromSolAmount,
   type FeeConfig,
   type Global,
@@ -19,7 +21,12 @@ import {
   type QuoteTransferFee,
   type ResolvedQuoteMint,
 } from '@pump-fun/pump-sdk';
-import { NATIVE_MINT, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import {
+  NATIVE_MINT,
+  TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction,
+  getAssociatedTokenAddressSync,
+} from '@solana/spl-token';
 import { ComputeBudgetProgram, PublicKey, SystemProgram, Transaction, type TransactionInstruction } from '@solana/web3.js';
 import BN from 'bn.js';
 import { APP_SHARE_BPS, CHERRY_APP_ID, TX_BYTE_LIMIT, USER_SHARE_BPS } from '../spike/constants.js';
@@ -192,18 +199,39 @@ export async function feeShareInstructions(req: LaunchRequest, ctx: LaunchContex
   const { wallet, mint, quote } = req;
   const newShareholders = feeShareholders(wallet, ctx.appFeeRecipient);
   const config = await PUMP_SDK.createFeeSharingConfig({ creator: wallet, mint, pool: null });
-  const update = isSol(quote)
-    ? await PUMP_SDK.updateFeeShares({ authority: wallet, mint, currentShareholders: [wallet], newShareholders, bondingCurveComplete: false })
-    : await PUMP_SDK.updateFeeSharesV2({
-        authority: wallet,
-        mint,
-        currentShareholders: [wallet],
-        newShareholders,
-        quoteMint: quote!.mint,
-        quoteTokenProgram: quote!.quoteTokenProgram ?? TOKEN_PROGRAM_ID,
-        bondingCurveComplete: false,
-      });
-  return [config, update];
+  if (isSol(quote)) {
+    const update = await PUMP_SDK.updateFeeShares({ authority: wallet, mint, currentShareholders: [wallet], newShareholders, bondingCurveComplete: false });
+    return [config, update];
+  }
+  const quoteTokenProgram = quote!.quoteTokenProgram ?? TOKEN_PROGRAM_ID;
+  const update = await PUMP_SDK.updateFeeSharesV2({
+    authority: wallet,
+    mint,
+    currentShareholders: [wallet],
+    newShareholders,
+    quoteMint: quote!.mint,
+    quoteTokenProgram,
+    bondingCurveComplete: false,
+  });
+  return [config, sharingVaultAtaInstruction(wallet, mint, quote!.mint, quoteTokenProgram), update];
+}
+
+/**
+ * Token-quoted coins only. create_fee_sharing_config moves the curve creator to the sharing
+ * config, and update_fee_shares_v2 CPIs distribute_creator_fees_v2, which reads the quote ATA of
+ * creatorVault(sharingConfig). Nothing creates that ATA, so without this the update fails with
+ * InvalidAccountData (VERIFIED on a mainnet fork 2026-11-12, with and without a dev buy).
+ * Idempotent; the wallet pays its rent.
+ */
+export function sharingVaultAtaInstruction(
+  wallet: PublicKey,
+  mint: PublicKey,
+  quoteMint: PublicKey,
+  quoteTokenProgram: PublicKey,
+): TransactionInstruction {
+  const vault = creatorVaultPda(feeSharingConfigPda(mint));
+  const ata = getAssociatedTokenAddressSync(quoteMint, vault, true, quoteTokenProgram);
+  return createAssociatedTokenAccountIdempotentInstruction(wallet, ata, vault, quoteMint, quoteTokenProgram);
 }
 
 export function serializedSize(tx: Transaction): number {

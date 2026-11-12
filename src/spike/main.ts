@@ -13,7 +13,7 @@ import { VARIANTS, fitsLegacy, serializedSize, type Variant } from './build';
 import { APP_FEE_WALLET, SPIKE_LABEL, SPIKE_OWNER_WALLETS, SPIKE_TEST_RECIPIENT } from './constants';
 import { isKill, refusalFields, toMarkdown, type SpikeRow } from './result';
 import { isOwner, sessionFromResponse, short, type SessionState } from './session';
-import { ENGINE_VARIANTS, USDC, buildAnyVariant, isEngine, type EngineVariant } from './variants';
+import { ENGINE_VARIANTS, USDC, buildAnyVariant, hasFeeShare, isEngine, type EngineVariant } from './variants';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const log = (msg: string) => {
@@ -52,7 +52,11 @@ async function simulateAlone(tx: Transaction): Promise<string> {
  */
 async function simulate(txs: Transaction[]): Promise<string[]> {
   try {
-    const body = { txs: txs.map((t) => t.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64')) };
+    // fundPayer: Preview only (server ignores it on Production). Tests program logic, not your balance.
+    const body = {
+      txs: txs.map((t) => t.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64')),
+      fundPayer: true,
+    };
     const res = await fetch('/api/sim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { results } = (await res.json()) as { results: { ok: boolean; cu: number; err?: string }[] };
@@ -82,16 +86,14 @@ async function run(variant: Variant | EngineVariant) {
   let mint: Keypair | null = Keypair.generate(); // memory only, dropped after the run
   const row: SpikeRow = { variant, result: 'ERROR', bytes: [], at: new Date().toISOString() };
   try {
-    // GUARD: the 5% recipient must never be the signing wallet. The test swaps in the owner's
-    // second wallet and SAYS so; production blocks the launch (src/launch/guard.ts).
-    let appFeeRecipient = new PublicKey(($('feeRecipient') as HTMLInputElement).value.trim() || APP_FEE_WALLET);
-    if (recipientIsSigner(wallet, appFeeRecipient)) {
-      const second = new PublicKey(SPIKE_TEST_RECIPIENT);
-      if (recipientIsSigner(wallet, second)) throw new Error('5% recipient = your signing wallet. Paste a different recipient above.');
-      appFeeRecipient = second;
-      ($('feeRecipient') as HTMLInputElement).value = second.toBase58();
+    // GUARD: the 5% recipient must never be the signing wallet. BLOCKED here, never swapped
+    // silently at sign time (production blocks too: src/launch/guard.ts + validateLaunch).
+    const appFeeRecipient = new PublicKey(($('feeRecipient') as HTMLInputElement).value.trim() || APP_FEE_WALLET);
+    if (hasFeeShare(variant) && recipientIsSigner(wallet, appFeeRecipient)) {
       warnRecipient(wallet);
-      log(`${variant}: 5% recipient was your signing wallet. Switched to ${short(second.toBase58())} for this test.`);
+      row.result = 'SKIPPED';
+      row.reason = 'BLOCKED: 5% recipient = signing wallet. Paste a different recipient above.';
+      return;
     }
     const pairRaw = ($('pairMint') as HTMLInputElement).value.trim();
     const { blockhash } = await connection.getLatestBlockhash('confirmed');
@@ -149,6 +151,21 @@ function warnRecipient(wallet: PublicKey | null) {
     /* not an address yet */
   }
   $('recipientWarn').hidden = !same;
+}
+
+/**
+ * Signed in AS the fee wallet (Ftui…): prefill the owner's second wallet BEFORE any tap, and say
+ * so on screen. Nothing changes at sign time; an equal pair is blocked in run().
+ */
+function prefillRecipient(wallet: PublicKey | null) {
+  const input = $('feeRecipient') as HTMLInputElement;
+  if (wallet && recipientIsSigner(wallet, input.value.trim() || APP_FEE_WALLET) && !recipientIsSigner(wallet, SPIKE_TEST_RECIPIENT)) {
+    input.value = SPIKE_TEST_RECIPIENT;
+    $('recipientNote').textContent = `You're signed in with the PetalDeck fee wallet (${short(wallet.toBase58())}), so the 5% recipient is set to your second wallet ${short(SPIKE_TEST_RECIPIENT)}. Check it before you tap.`;
+    $('recipientNote').hidden = false;
+    log(`5% recipient prefilled with ${short(SPIKE_TEST_RECIPIENT)} (signer is the fee wallet).`);
+  }
+  warnRecipient(wallet);
 }
 
 /** What Pump allows right now, read from chain (Global + QuoteControl). */
@@ -239,7 +256,7 @@ async function boot() {
     cherry = new CherryMiniApp({ initTimeout: 8000 });
     await cherry.init();
     renderWho();
-    warnRecipient(signerWallet());
+    prefillRecipient(signerWallet());
     await exchangeLaunchToken(cherry.launchToken);
   } catch (e) {
     auth = { kind: 'signed-out', reason: `Cherry handshake failed: ${(e as Error).message}` };

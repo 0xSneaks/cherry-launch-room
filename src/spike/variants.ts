@@ -15,14 +15,17 @@ export const ENGINE_VARIANTS = {
   F: 'USDC pair: create + 1 USDC first buy + 95/5 split (one approval)',
   G: 'Mayhem mode: create + 0.01 SOL first buy + 95/5 split',
   H: 'Custom pair (mint below): create + 95/5 split (+2.5% creator fee if Pump allows)',
+  P: 'PRODUCTION flow: SOL create + 0.01 SOL first buy → 95/5 split + ref (one approval)',
 } as const;
 export type EngineVariant = keyof typeof ENGINE_VARIANTS;
 export type AnyVariant = Variant | EngineVariant;
 export const isEngine = (v: string): v is EngineVariant => v in ENGINE_VARIANTS;
+/** Variants that set the 95/5 split (and so use the 5% recipient). */
+export const hasFeeShare = (v: AnyVariant): boolean => isEngine(v) || VARIANTS[v].txs.some((t) => t.feeShare);
 export const ALL_VARIANTS: AnyVariant[] = [...(Object.keys(VARIANTS) as Variant[]), ...(Object.keys(ENGINE_VARIANTS) as EngineVariant[])];
 
 export const F_USDC_BUY = new BN(1_000_000); // 1 USDC (6 decimals)
-export const G_SOL_BUY = new BN(10_000_000); // 0.01 SOL
+export const G_SOL_BUY = new BN(10_000_000); // 0.01 SOL (G and P)
 
 export interface VariantInput {
   pump: OnlinePumpSdk;
@@ -43,7 +46,7 @@ export interface BuiltVariant {
 
 export async function buildAnyVariant(variant: AnyVariant, input: VariantInput): Promise<BuiltVariant> {
   const { pump, wallet, mint, appFeeRecipient, recentBlockhash } = input;
-  assertRecipientNotSigner(wallet, appFeeRecipient);
+  if (hasFeeShare(variant)) assertRecipientNotSigner(wallet, appFeeRecipient);
 
   if (!isEngine(variant)) {
     const spec = VARIANTS[variant];
@@ -72,7 +75,7 @@ export async function buildAnyVariant(variant: AnyVariant, input: VariantInput):
     mint,
     coin: SPIKE_COIN,
     quote,
-    devBuy: variant === 'F' ? F_USDC_BUY : variant === 'G' ? G_SOL_BUY : null,
+    devBuy: variant === 'F' ? F_USDC_BUY : variant === 'G' || variant === 'P' ? G_SOL_BUY : null,
     mayhemMode: variant === 'G',
     creatorFeeBps: exotic && global.creatorFeeConfigurable ? BN.min(new BN(250), global.maxConfigurableCreatorFeeBps) : null,
     holderReward: false,

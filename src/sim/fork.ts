@@ -20,17 +20,27 @@ export const READ_METHODS = new Set(['getMultipleAccounts', 'getSlot', 'getBlock
 export type RpcRead = (method: string, params: unknown[]) => Promise<unknown>;
 
 /** JSON-RPC reader that refuses anything but READ_METHODS. */
-export function rpcReader(url: string, fetchImpl: typeof fetch = fetch): RpcRead {
+export function rpcReader(url: string, fetchImpl: typeof fetch = fetch, retries = 4): RpcRead {
   return async (method, params) => {
     if (!READ_METHODS.has(method)) throw new Error(`fork sim: method not allowed: ${method}`);
-    const res = await fetchImpl(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    });
-    const body = (await res.json()) as { result?: unknown; error?: { message?: string } };
-    if (body.error) throw new Error(`rpc ${method}: ${body.error.message ?? 'error'}`);
-    return body.result;
+    for (let attempt = 0; ; attempt++) {
+      const res = await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+      });
+      // Public RPCs rate-limit bursts (HTTP 429 or a JSON-RPC rate error): back off and retry the read.
+      const limited = res.status === 429;
+      const body = limited ? null : ((await res.json()) as { result?: unknown; error?: { message?: string } });
+      const rateErr = limited || /rate limit/i.test(body?.error?.message ?? '');
+      if (rateErr && attempt < retries) {
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+        continue;
+      }
+      if (limited) throw new Error(`rpc ${method}: rate limited`);
+      if (body!.error) throw new Error(`rpc ${method}: ${body!.error.message ?? 'error'}`);
+      return body!.result;
+    }
   };
 }
 
@@ -104,6 +114,7 @@ function errText(err: unknown): string {
 }
 
 function tailLogs(logs: string[]): string[] {
+  if (typeof process !== 'undefined' && process.env?.SIM_FULL_LOGS) return logs; // local debugging only
   const errs = logs.filter((l) => /error|failed|Error Code|custom program error/i.test(l));
   return [...errs.slice(-4), ...logs.slice(-3)].filter((l, i, a) => a.indexOf(l) === i).map((l) => l.slice(0, 220));
 }
