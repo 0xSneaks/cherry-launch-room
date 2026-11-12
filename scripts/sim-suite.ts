@@ -1,5 +1,5 @@
 // CLI: run the A–H suite on a local mainnet fork (reads only; nothing is signed or sent).
-//   SOLANA_RPC_URL=<read rpc> npx vite-node scripts/sim-suite.ts [A,B,…] [pairMint]
+//   npm run sim   (or after one run: node scripts/.sim-suite.mjs [A,B,…] [pairMint]; SOLANA_RPC_URL optional)
 // Prints the markdown table + JSON rows. Never prints the RPC URL.
 import { PublicKey } from '@solana/web3.js';
 import { rpcReader } from '../src/sim/fork.js';

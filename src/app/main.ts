@@ -32,14 +32,11 @@ import {
 import { FeeWalletIsSignerError, FormInvalidError, createLauncher, shortKey, type CherrySigner, type LaunchSummary, type PreparedLaunch } from './launch';
 import { nextTier, type Tier } from './tiers';
 
-// Hidden dev flag: /?debug=1 opens the A–H test harness (keeps Cherry's own params).
+// Hidden owner flag: /?harness=1 opens the A–H test harness (keeps Cherry's own params).
+// Without it nobody lands on the harness: /debug/ and /spike send everyone back here.
 const params = new URLSearchParams(location.search);
-const goDebug = params.has('debug');
-if (goDebug) {
-  params.delete('debug');
-  const rest = params.toString();
-  location.replace(`/debug/${rest ? '?' + rest : ''}`);
-}
+const goDebug = params.get('harness') === '1';
+if (goDebug) location.replace(`/debug/?${params.toString()}`);
 const theme = params.get('cherry_theme');
 if (theme === 'light' || theme === 'dark') document.documentElement.dataset.cherryTheme = theme;
 

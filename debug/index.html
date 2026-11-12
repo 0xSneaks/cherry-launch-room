@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>PetalDeck · debug</title>
   <meta name="robots" content="noindex" />
+  <script>
+    // Internal test harness. Only an explicit ?harness=1 opens it; everyone else gets the real app
+    // (Cherry's own params kept). Runs before anything renders.
+    (function () {
+      var q = new URLSearchParams(location.search);
+      if (q.get('harness') !== '1') location.replace('/' + (location.search || ''));
+    })();
+  </script>
   <style>
     :root { color-scheme: dark; --bg:#0d0f12; --fg:#e8eaed; --muted:#9aa0a6; --card:#171a1f; --accent:#ff3b5c; }
     * { box-sizing: border-box; }

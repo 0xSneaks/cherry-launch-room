@@ -60,7 +60,7 @@ export class FormInvalidError extends Error {
 
 export class FeeWalletIsSignerError extends Error {
   constructor() {
-    super("This wallet is PetalDeck's fee wallet. Launch from a different wallet.");
+    super("You're signed in with PetalDeck's fee wallet, which can't pay itself the 5%. In Cherry, switch the wallet this app pays with, then try again.");
     this.name = 'FeeWalletIsSignerError';
   }
 }

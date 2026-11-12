@@ -38,12 +38,12 @@
   "redirects": [
     {
       "source": "/spike",
-      "destination": "/debug/",
+      "destination": "/",
       "permanent": false
     },
     {
       "source": "/spike/",
-      "destination": "/debug/",
+      "destination": "/",
       "permanent": false
     }
   ]

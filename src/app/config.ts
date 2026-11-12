@@ -13,16 +13,13 @@ export type HarnessVariant = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
 export const ROUTES = { SOL: ['C', 'D'], USDC: ['F'], CUSTOM: ['H'], MAYHEM: ['G'] } as const satisfies Record<string, readonly HarnessVariant[]>;
 
 /**
- * Harness results from Sneaks's "Copy results table" in Cherry (2026-11-09): every signable variant came back
- * DANGEROUS_INSTRUCTION from Cherry Wallet; E is measure-only. Re-run with the wallet funded: same refusals, our
- * sim of the create tx passes. Pump's create_v2 itself CPIs spl-token SetAuthority (revokes mint authority) and
- * updateTokenMetadataAuthority -> null (VERIFIED by simulation); SetAuthority is on Cherry's forbidden list for
- * unverified/verified tiers (SDK README §8). Likely cause (INFERENCE): only Cherry can allow it (partner tier).
- * Dry-run signing is allowed either way (it IS the test).
+ * Harness results from Sneaks's in-Cherry run, 2026-11-12 (tier verified): A, B, C, D, F, H SIGNED; E is
+ * measure-only; G not run yet. The 2026-11-09 DANGEROUS_INSTRUCTION refusals no longer reproduce.
+ * Every fee-share tx passes simulation once its create runs first (docs/launch-flow.md).
  * A future live mode must refuse any route whose variants are not all 'signed'.
  */
 export const HARNESS_RESULTS: Record<HarnessVariant, 'untested' | 'signed' | 'refused'> = {
-  A: 'refused', B: 'refused', C: 'refused', D: 'refused', E: 'untested', F: 'refused', G: 'refused', H: 'refused',
+  A: 'signed', B: 'signed', C: 'signed', D: 'signed', E: 'untested', F: 'signed', G: 'untested', H: 'signed',
 };
 
 /**
