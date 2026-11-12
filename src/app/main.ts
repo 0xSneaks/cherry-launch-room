@@ -13,6 +13,7 @@ import { SPIKE_OWNER_WALLETS } from '../spike/constants';
 import { isOwner, sessionFromResponse, type SessionState } from '../spike/session';
 import { DRY_RUN_METADATA_URI, FEE_LINE, LAUNCH_MODE, LIVE_FOR_OWNERS_ONLY, QUICK_BUYS } from './config';
 import { UploadError, uploadMetadata } from './upload';
+import { fetchPairs, filterPairs, fmtUsd, logo, type PairFilter, type PairInfo, type PairsPayload } from './pairs';
 import {
   buyError,
   emptyForm,
@@ -63,6 +64,9 @@ let pinned: { key: string; uri: string } | null = null;
 /** The live launch shown on the done sheet (kept for Retry). */
 let live: { launch: PreparedLaunch; outcome: LaunchOutcome } | null = null;
 let launching = false;
+let pairs: PairsPayload | null = null;
+let pairCat: PairFilter = 'all';
+let selectedPair: PairInfo | null = null;
 let bannerUrl: string | null = null;
 
 // ---------- toasts ----------
@@ -119,6 +123,7 @@ function render() {
         ? 'Mayhem mode works with SOL or USDC pairs only.'
         : "Pump's mayhem launch mode. SOL or USDC pairs only, set once at creation.";
 
+  renderPickRow();
   $<HTMLButtonElement>('create').disabled = hasErrors(requiredErrors(form));
 }
 
@@ -223,14 +228,91 @@ function setPair(pair: Pair) {
   }
   form.initialBuy = ''; // the unit changed
   render();
+  if (pair === 'CUSTOM' && !form.customMint) openPairSheet();
+}
+
+// ---------- custom pair picker (Pump's live list) ----------
+function renderTileIcons() {
+  for (const [key, p] of [['sol', pairs?.sol], ['usdc', pairs?.usdc]] as const) {
+    const slot = document.querySelector<HTMLElement>(`[data-icon="${key}"]`);
+    if (slot && p) slot.replaceChildren(logo(p, 'tile-logo'));
+  }
+}
+
+function renderPickRow() {
+  const p = selectedPair && selectedPair.mint === form.customMint.trim() ? selectedPair : null;
+  const mint = form.customMint.trim();
+  $('pickName').textContent = p ? p.name : mint ? shortKey(mint) : 'Select custom pair';
+  $('pickSub').textContent = p ? p.symbol : mint ? 'Pasted mint' : '';
+  $('pickSub').hidden = !p && !mint;
+  const icon = $('pickIcon');
+  icon.hidden = !p;
+  if (p) icon.replaceChildren(logo(p, 'pick-logo'));
+}
+
+function renderPairList() {
+  const list = $('pairList');
+  const q = input('pairSearch').value;
+  document.querySelectorAll<HTMLButtonElement>('#pairChips button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.cat === pairCat)));
+  if (!pairs) {
+    list.replaceChildren(Object.assign(document.createElement('p'), { className: 'pair-empty', textContent: 'Loading Pump pairs…' }));
+    return;
+  }
+  const rows: HTMLElement[] = [];
+  const pasted = q.trim();
+  if (isValidMint(pasted) && !pairs.custom.some((p) => p.mint === pasted)) {
+    rows.push(pairRow({ mint: pasted, name: 'Use pasted mint', symbol: shortKey(pasted), icon: null, category: 'memes', mcap: null, liquidity: null }));
+  }
+  for (const p of filterPairs(pairs.custom, pairCat, q)) rows.push(pairRow(p));
+  list.replaceChildren(...(rows.length ? rows : [Object.assign(document.createElement('p'), { className: 'pair-empty', textContent: 'No pairs match.' })]));
+}
+
+function pairRow(p: PairInfo): HTMLElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'pair-row';
+  b.setAttribute('role', 'option');
+  b.setAttribute('aria-selected', String(p.mint === form.customMint.trim()));
+  const main = document.createElement('span');
+  main.className = 'pair-main';
+  main.append(Object.assign(document.createElement('span'), { className: 'pair-name', textContent: p.name }), Object.assign(document.createElement('span'), { className: 'pair-sym', textContent: p.symbol }));
+  const stats = document.createElement('span');
+  stats.className = 'pair-stats';
+  if (p.mcap !== null) stats.append(Object.assign(document.createElement('span'), { className: 'pair-mcap', textContent: fmtUsd(p.mcap) }));
+  if (p.liquidity !== null) stats.append(Object.assign(document.createElement('span'), { className: 'pair-liq', textContent: `Liquidity · ${fmtUsd(p.liquidity)}` }));
+  b.append(logo(p), main, stats);
+  b.onclick = () => selectPair(p);
+  return b;
+}
+
+function selectPair(p: PairInfo) {
+  selectedPair = p.name === 'Use pasted mint' ? null : p;
+  form.customMint = p.mint;
+  touched.add('customMint');
+  void checkCustomMint();
+  closeSheet('pairSheet');
+  render();
+}
+
+function openPairSheet() {
+  input('pairSearch').value = '';
+  renderPairList();
+  openSheet('pairSheet');
+}
+
+async function loadPairs() {
+  pairs = await fetchPairs();
+  renderTileIcons();
+  if (!$('pairSheet').hidden) renderPairList();
 }
 
 // ---------- sheets ----------
-function openSheet(id: 'buySheet' | 'sheet' | 'doneSheet') {
+type SheetId = 'buySheet' | 'sheet' | 'doneSheet' | 'pairSheet';
+function openSheet(id: SheetId) {
   $('toasts').replaceChildren(); // nothing may cover the sheet's buttons
   $(id).hidden = false;
 }
-function closeSheet(id: 'buySheet' | 'sheet' | 'doneSheet') {
+function closeSheet(id: SheetId) {
   if (launching && id === 'sheet') return; // never hide a launch in flight
   $(id).hidden = true;
   if (id === 'sheet') prepared = null;
@@ -263,7 +345,7 @@ function fillConfirm(s: LaunchSummary) {
   }
   $('sheetTitle').textContent = s.name;
   $('sheetTicker').textContent = `$${s.ticker}`;
-  $('sheetPair').textContent = s.pair;
+  $('sheetPair').textContent = form.pair === 'CUSTOM' && selectedPair?.mint === form.customMint.trim() ? `${selectedPair.name} (${selectedPair.symbol})` : s.pair;
   $('sheetBuy').textContent = s.initialBuy;
   $('sheetCost').textContent = s.costLamports === null ? 'Unavailable' : `≈ ${sol(s.costLamports)}`;
   $('sheetFees').textContent = s.feeSplit;
@@ -470,7 +552,7 @@ async function connectCherry() {
 
 function boot() {
   $('feeLine').textContent = FEE_LINE;
-  (['name', 'ticker', 'description', 'website', 'x', 'telegram', 'customMint'] as const).forEach(bindText);
+  (['name', 'ticker', 'description', 'website', 'x', 'telegram'] as const).forEach(bindText);
   input('media').addEventListener('change', () => setMedia(input('media').files?.[0] ?? null));
   input('banner').addEventListener('change', () => setBanner(input('banner').files?.[0] ?? null));
   document.querySelectorAll<HTMLButtonElement>('[data-pair]').forEach((b) => (b.onclick = () => setPair(b.dataset.pair as Pair)));
@@ -516,10 +598,11 @@ function boot() {
     closeSheet('sheet');
     openBuySheet();
   };
-  document.querySelectorAll<HTMLElement>('[data-close]').forEach((el) => (el.onclick = () => closeSheet(el.dataset.close as 'buySheet' | 'sheet' | 'doneSheet')));
+  document.querySelectorAll<HTMLElement>('[data-close]').forEach((el) => (el.onclick = () => closeSheet(el.dataset.close as SheetId)));
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!$('doneSheet').hidden) closeSheet('doneSheet');
+    if (!$('pairSheet').hidden) closeSheet('pairSheet');
+    else if (!$('doneSheet').hidden) closeSheet('doneSheet');
     else if (!$('sheet').hidden) closeSheet('sheet');
     else if (!$('buySheet').hidden) closeSheet('buySheet');
   });
@@ -531,6 +614,13 @@ function boot() {
   render();
   renderChip();
   void loadPumpLimits();
+  void loadPairs();
+  $('pickPair').onclick = openPairSheet;
+  input('pairSearch').addEventListener('input', renderPairList);
+  document.querySelectorAll<HTMLButtonElement>('#pairChips button').forEach((b) => (b.onclick = () => {
+    pairCat = b.dataset.cat as PairFilter;
+    renderPairList();
+  }));
   void loadConfig();
   void connectCherry();
 }
