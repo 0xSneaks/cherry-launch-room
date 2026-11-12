@@ -1,4 +1,5 @@
-// GET /api/config — public, non-secret app config for the PetalDeck form.
+// GET /api/config — public, non-secret app config for the PetalDeck form. Bundled to api/config.js by npm run build:api
+// (unbundled @solana/web3.js crashed on Vercel: FUNCTION_INVOCATION_FAILED).
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { feeRecipientFromEnv } from '../src/server/feeConfig.js';
 
