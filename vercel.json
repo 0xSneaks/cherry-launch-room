@@ -8,7 +8,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "frame-ancestors 'self' https://chat.cherry.fun https://cherry.fun https://*.cherry.fun"
+          "value": "frame-ancestors 'self' https://chat.cherry.fun https://cherry.fun https://*.cherry.fun; script-src 'self' 'unsafe-inline'"
         },
         {
           "key": "Referrer-Policy",
