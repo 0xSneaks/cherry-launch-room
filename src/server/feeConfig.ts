@@ -1,6 +1,6 @@
 // PetalDeck's 5% fee-share recipient, from server config. Not shown to users, not editable in the UI.
 import { PublicKey } from '@solana/web3.js';
-import { APP_FEE_WALLET } from '../spike/constants';
+import { APP_FEE_WALLET } from '../spike/constants.js';
 
 /**
  * PETALDECK_FEE_WALLET (raw base58, never a .skr name) when set; else the pinned APP_FEE_WALLET.
