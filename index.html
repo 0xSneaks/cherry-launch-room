@@ -102,20 +102,20 @@
     <!-- Card 2: media -->
     <section class="card" aria-label="Coin image">
       <label class="drop" id="drop" for="media">
-        <input id="media" type="file" accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm" class="sr-only" />
+        <input id="media" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="sr-only" />
         <img id="mediaImg" alt="" hidden />
         <video id="mediaVideo" muted loop playsinline autoplay hidden></video>
         <span class="drop-empty" id="dropEmpty">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4"/><path d="m6 10 6-6 6 6"/><path d="M4 20h16"/></svg>
-          <span>Your coin's picture or clip</span>
-          <span class="btn-accent">Select image or video</span>
+          <span>Your coin's picture</span>
+          <span class="btn-accent">Select image</span>
         </span>
         <span class="drop-change" id="dropChange" hidden>Change</span>
       </label>
       <p class="err" data-err="media"></p>
       <dl class="rules">
-        <div><dt>Files</dt><dd>Images: PNG, JPG, GIF or WebP, up to 15 MB. Videos: MP4 or WebM, up to 30 MB.</dd></div>
-        <div><dt>Size</dt><dd>Square images look best at 1000 × 1000 px or larger. Videos: 16:9 or 9:16.</dd></div>
+        <div><dt>Files</dt><dd>PNG, JPG, GIF or WebP. Big images are resized for you; GIFs up to 3 MB. Video coins coming soon.</dd></div>
+        <div><dt>Size</dt><dd>Square images look best, 1000 × 1000 px.</dd></div>
       </dl>
       <details class="fold" id="bannerFold">
         <summary>Add banner <span class="opt">(Optional)</span></summary>
@@ -190,6 +190,30 @@
       <div class="sheet-actions">
         <button id="sign" class="primary" type="button">Sign in Cherry</button>
         <button class="ghost" type="button" id="sheetBack">Back</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Sheet 3: done (live launch) -->
+  <div class="sheet" id="doneSheet" hidden>
+    <div class="sheet-backdrop" data-close="doneSheet"></div>
+    <section class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="doneTitle">
+      <div class="grabber" aria-hidden="true"></div>
+      <div class="sheet-body">
+        <div class="coin">
+          <span class="coin-media" id="doneMedia"></span>
+          <div><h2 id="doneTitle">Your coin is live</h2><p class="muted small">Contract address</p></div>
+        </div>
+        <button type="button" class="ca" id="doneCopy" aria-label="Copy contract address"><code id="doneMint"></code><span>Copy CA</span></button>
+        <p class="hint" id="doneStatus"></p>
+      </div>
+      <div class="sheet-actions">
+        <button id="doneRetry" class="primary" type="button" hidden>Finish</button>
+        <a class="primary go-trade" id="donePump" target="_blank" rel="noopener">Go trade</a>
+        <div class="links">
+          <a class="link-btn" id="doneSolscan" target="_blank" rel="noopener">Solscan</a>
+          <button class="link-btn" type="button" data-close="doneSheet">Done</button>
+        </div>
       </div>
     </section>
   </div>

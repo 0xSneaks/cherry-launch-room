@@ -7,11 +7,12 @@ import { Buffer } from 'buffer';
 import './styles.css';
 import { CherryMiniApp, getBridgeError, isInsideCherry } from '@cherrydotfun/miniapp-sdk';
 import { OnlinePumpSdk } from '@pump-fun/pump-sdk';
-import { Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction } from '@solana/web3.js';
 import { explainLaunchError } from '../launch/errors';
 import { SPIKE_OWNER_WALLETS } from '../spike/constants';
 import { isOwner, sessionFromResponse, type SessionState } from '../spike/session';
-import { FEE_LINE, LAUNCH_MODE, QUICK_BUYS } from './config';
+import { DRY_RUN_METADATA_URI, FEE_LINE, LAUNCH_MODE, LIVE_FOR_OWNERS_ONLY, QUICK_BUYS } from './config';
+import { UploadError, uploadMetadata } from './upload';
 import {
   buyError,
   emptyForm,
@@ -29,7 +30,7 @@ import {
   type Pair,
   type PumpLimits,
 } from './form';
-import { FeeWalletIsSignerError, FormInvalidError, createLauncher, shortKey, type CherrySigner, type LaunchSummary, type PreparedLaunch } from './launch';
+import { FeeWalletIsSignerError, FormInvalidError, createLauncher, shortKey, type CherrySigner, type LaunchOutcome, type LaunchSummary, type PreparedLaunch } from './launch';
 import { nextTier, type Tier } from './tiers';
 
 // Hidden owner flag: /?harness=1 opens the A–H test harness (keeps Cherry's own params).
@@ -56,6 +57,12 @@ let signer: CherrySigner | null = null;
 let ownerOverride = false; // dev preview only
 let prepared: PreparedLaunch | null = null;
 let mediaUrl: string | null = null;
+let mediaFile: File | null = null;
+/** Pinned metadata for the current form (re-used if the user goes back and forth). */
+let pinned: { key: string; uri: string } | null = null;
+/** The live launch shown on the done sheet (kept for Retry). */
+let live: { launch: PreparedLaunch; outcome: LaunchOutcome } | null = null;
+let launching = false;
 let bannerUrl: string | null = null;
 
 // ---------- toasts ----------
@@ -179,6 +186,7 @@ function setMedia(file: File | null) {
   mediaUrl = null;
   form.media = file ? { type: file.type, size: file.size } : null;
   const ok = !!file && !mediaError(form.media);
+  mediaFile = ok ? file : null;
   if (ok) mediaUrl = URL.createObjectURL(file);
   const video = ok && isVideo(form.media);
   const img = $<HTMLImageElement>('mediaImg');
@@ -218,11 +226,12 @@ function setPair(pair: Pair) {
 }
 
 // ---------- sheets ----------
-function openSheet(id: 'buySheet' | 'sheet') {
+function openSheet(id: 'buySheet' | 'sheet' | 'doneSheet') {
   $('toasts').replaceChildren(); // nothing may cover the sheet's buttons
   $(id).hidden = false;
 }
-function closeSheet(id: 'buySheet' | 'sheet') {
+function closeSheet(id: 'buySheet' | 'sheet' | 'doneSheet') {
+  if (launching && id === 'sheet') return; // never hide a launch in flight
   $(id).hidden = true;
   if (id === 'sheet') prepared = null;
 }
@@ -270,7 +279,7 @@ function showError(err: unknown) {
     render();
     return toast(err.message, 'error');
   }
-  if (err instanceof FeeWalletIsSignerError) return toast(err.message, 'error', 6000);
+  if (err instanceof FeeWalletIsSignerError || err instanceof UploadError) return toast(err.message, 'error', 6000);
   toast(explainLaunchError(err), 'error', 6000);
 }
 
@@ -292,7 +301,7 @@ function onCreate() {
   if (!feeRecipient) return toast("Couldn't load PetalDeck settings. Try again in a minute.", 'error');
   if (!wallet || !signer) return toast('Open PetalDeck inside Cherry to create a coin.', 'info');
   if (feeRecipient.equals(wallet)) return toast(new FeeWalletIsSignerError().message, 'error', 6000);
-  if (LAUNCH_MODE === 'dry-run' && !ownerOverride && !isOwner(auth, SPIKE_OWNER_WALLETS)) return toast('Creating coins opens soon.', 'info');
+  if ((LAUNCH_MODE === 'dry-run' || LIVE_FOR_OWNERS_ONLY) && !ownerOverride && !isOwner(auth, SPIKE_OWNER_WALLETS)) return toast('Creating coins opens soon.', 'info');
   openBuySheet();
 }
 
@@ -307,7 +316,18 @@ async function onBuyDone(skip: boolean) {
   btn.setAttribute('aria-busy', 'true');
   btn.textContent = 'Preparing…';
   try {
-    prepared = await createLauncher({ connection, pump, signer, wallet, feeRecipient }).buildLaunch({ ...form });
+    let uri = DRY_RUN_METADATA_URI;
+    if (LAUNCH_MODE === 'live') {
+      if (!mediaFile) throw new UploadError('Add an image for your coin.');
+      const key = JSON.stringify([form.name.trim(), form.ticker, form.description.trim(), form.website.trim(), form.x.trim(), form.telegram.trim(), mediaFile.name, mediaFile.size, mediaFile.lastModified]);
+      if (pinned?.key !== key) {
+        btn.textContent = 'Uploading image…';
+        pinned = { key, uri: await uploadMetadata(form, mediaFile) };
+        btn.textContent = 'Preparing…';
+      }
+      uri = pinned.uri;
+    }
+    prepared = await createLauncher({ connection, pump, signer, wallet, feeRecipient }).buildLaunch({ ...form }, uri);
     fillConfirm(prepared.summary);
     closeSheet('buySheet');
     openSheet('sheet');
@@ -326,22 +346,67 @@ async function onBuyDone(skip: boolean) {
   }
 }
 
-/** Step 3: one Cherry approval. Dry-run: signed, verified, dropped. */
+/** Step 3: one Cherry approval. Live: send + confirm in order, then the done sheet. Dry-run: signed, verified, dropped. */
 async function onSign() {
   if (!prepared) return;
   const btn = $<HTMLButtonElement>('sign');
-  btn.disabled = true;
+  const back = $<HTMLButtonElement>('sheetBack');
+  btn.disabled = back.disabled = true;
   btn.textContent = 'Waiting for Cherry…';
+  const launch = prepared;
   try {
-    const res = await prepared.sign();
+    if (LAUNCH_MODE === 'live') {
+      launching = true;
+      const outcome = await launch.launch((t) => (btn.textContent = t)).finally(() => (launching = false));
+      live = { launch, outcome };
+      closeSheet('sheet');
+      showDone();
+      return;
+    }
+    const res = await launch.sign();
     closeSheet('sheet');
     toast(res.verified ? 'Signed in Cherry. Dry run: nothing was sent.' : 'Signed, but a signature did not verify. Nothing was sent.', res.verified ? 'success' : 'error', 6000);
   } catch (err) {
     closeSheet('sheet');
     showError(err);
   } finally {
+    btn.disabled = back.disabled = false;
+    btn.textContent = LAUNCH_MODE === 'live' ? 'Launch coin' : 'Sign in Cherry';
+  }
+}
+
+// ---------- done sheet (live) ----------
+function showDone() {
+  if (!live) return;
+  const o = live.outcome;
+  const done = o.landed === o.total;
+  $('doneTitle').textContent = done ? 'Your coin is live' : 'Your coin is live, one step left';
+  $('doneMint').textContent = o.mint;
+  $<HTMLAnchorElement>('donePump').href = `https://pump.fun/coin/${o.mint}`;
+  $<HTMLAnchorElement>('doneSolscan').href = `https://solscan.io/token/${o.mint}`;
+  const media = $('doneMedia');
+  media.replaceChildren();
+  if (mediaUrl) media.append(Object.assign(document.createElement('img'), { src: mediaUrl, alt: '' }));
+  $('doneStatus').textContent = done
+    ? 'Creator fees: you 95% · PetalDeck 5%, set on-chain.'
+    : "The fee-split step didn't go through. Your coin exists; tap Finish to set the 95/5 split.";
+  $('doneStatus').classList.toggle('warn-text', !done);
+  $('doneRetry').hidden = done;
+  openSheet('doneSheet');
+}
+
+async function onRetry() {
+  if (!live) return;
+  const btn = $<HTMLButtonElement>('doneRetry');
+  btn.disabled = true;
+  try {
+    live.outcome = await live.launch.retry((t) => (btn.textContent = t));
+  } catch (err) {
+    showError(err);
+  } finally {
     btn.disabled = false;
-    btn.textContent = 'Sign in Cherry';
+    btn.textContent = 'Finish';
+    showDone();
   }
 }
 
@@ -442,14 +507,20 @@ function boot() {
   $('buyContinue').onclick = () => void onBuyDone(false);
   $('buySkip').onclick = () => void onBuyDone(true);
   $('sign').onclick = () => void onSign();
+  $('doneRetry').onclick = () => void onRetry();
+  $('doneCopy').onclick = () => {
+    if (live) void navigator.clipboard?.writeText(live.outcome.mint).then(() => toast('Contract address copied.', 'success'));
+  };
+  if (LAUNCH_MODE === 'live') $('sign').textContent = 'Launch coin';
   $('sheetBack').onclick = () => {
     closeSheet('sheet');
     openBuySheet();
   };
-  document.querySelectorAll<HTMLElement>('[data-close]').forEach((el) => (el.onclick = () => closeSheet(el.dataset.close as 'buySheet' | 'sheet')));
+  document.querySelectorAll<HTMLElement>('[data-close]').forEach((el) => (el.onclick = () => closeSheet(el.dataset.close as 'buySheet' | 'sheet' | 'doneSheet')));
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
-    if (!$('sheet').hidden) closeSheet('sheet');
+    if (!$('doneSheet').hidden) closeSheet('doneSheet');
+    else if (!$('sheet').hidden) closeSheet('sheet');
     else if (!$('buySheet').hidden) closeSheet('buySheet');
   });
 
@@ -469,12 +540,19 @@ if (!goDebug) boot();
 // Dev server only (stripped from production builds): preview the signed-in flow outside Cherry for screenshots.
 if (import.meta.env.DEV) {
   (window as unknown as { __petaldeck: unknown }).__petaldeck = {
-    devSession(wallet: string) {
+    devSession(wallet: string, fakeSign = false) {
+      // fakeSign: a throwaway in-memory key stands in for Cherry and really signs, to exercise the live
+      // screens against a mocked /api/send. Dev server only; stripped from production builds.
+      const kp = fakeSign ? Keypair.generate() : null;
+      if (kp) wallet = kp.publicKey.toBase58();
       auth = { kind: 'signed-in', session: { userKey: 'dev', wallet, tier: 'unverified', exp: Date.now() / 1000 + 300 } };
-      signer = {
-        signTransaction: () => Promise.reject(new Error('dev preview: no Cherry wallet')),
-        signAllTransactions: () => Promise.reject(new Error('dev preview: no Cherry wallet')),
-      };
+      const sign = (tx: Transaction) => (tx.partialSign(kp!), tx.serialize({ requireAllSignatures: false }));
+      signer = kp
+        ? { signTransaction: async (tx) => sign(tx), signAllTransactions: async (txs) => txs.map(sign) }
+        : {
+            signTransaction: () => Promise.reject(new Error('dev preview: no Cherry wallet')),
+            signAllTransactions: () => Promise.reject(new Error('dev preview: no Cherry wallet')),
+          };
       ownerOverride = true;
       renderChip();
     },

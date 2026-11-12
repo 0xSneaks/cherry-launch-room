@@ -256,3 +256,20 @@ input:focus, textarea:focus { border-color: var(--accent); }
   .coin-media { width: 40px; height: 40px; }
   .sheet-body { gap: 8px; }
 }
+
+/* ---------- done sheet (live launch) ---------- */
+.ca {
+  width: 100%; min-height: var(--tap); display: flex; align-items: center; gap: 10px; margin: 12px 0 4px;
+  padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--field);
+  color: var(--text); cursor: pointer; text-align: left;
+}
+.ca code { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.ca span { color: var(--accent); font-weight: 700; font-size: 14px; flex: none; }
+.links { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.link-btn {
+  min-height: var(--tap); display: flex; align-items: center; justify-content: center; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--tint); color: var(--text); font-weight: 700; text-decoration: none; font-size: 15px;
+}
+.warn-text { color: var(--danger); }
+.go-trade { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+.links .link-btn { font: inherit; font-weight: 700; cursor: pointer; }

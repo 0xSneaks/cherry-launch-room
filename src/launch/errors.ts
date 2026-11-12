@@ -92,8 +92,13 @@ export function explainLaunchError(err: unknown): string {
   if (sdk) return sdk[1];
   const code = customCode(err);
   if (code !== null && PUMP[code]) return PUMP[code];
-  if (/insufficient (funds|lamports)/i.test(String((err as Error | null)?.message ?? err))) {
+  const text = `${String((err as Error | null)?.message ?? err)} ${JSON.stringify((err as { detail?: unknown } | null)?.detail ?? '')}`;
+  if (/insufficient (funds|lamports)|no record of a prior credit|InsufficientFundsForRent|insufficient funds for rent/i.test(text)) {
     return 'Not enough balance for this launch (coin rent + fees + first buy).';
   }
+  if (/blockhash not found|block height exceeded|BlockhashNotFound/i.test(text)) {
+    return 'That took too long to send and did not go through. Try again.';
+  }
+  if (/Not confirmed in time/i.test(text)) return 'Solana is slow right now. Check Solscan before trying again.';
   return UNKNOWN_LAUNCH_ERROR;
 }

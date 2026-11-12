@@ -1,6 +1,5 @@
-// Read-only Solana JSON-RPC proxy for the sign-only spike.
-// Allowlisted reads + simulation only: anything that could broadcast is refused here,
-// so even a buggy client cannot send a transaction through this app.
+// Read-only Solana JSON-RPC proxy. Allowlisted reads + simulation only: anything that could
+// broadcast is refused here. Launch txs go out ONLY through /api/send, which checks their shape.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export const ALLOWED_METHODS = new Set([
@@ -11,6 +10,7 @@ export const ALLOWED_METHODS = new Set([
   'getEpochInfo', // Token-2022 quote transfer fee (pump SDK fetchQuoteTransferFee)
   'getMinimumBalanceForRentExemption',
   'simulateTransaction',
+  'getSignatureStatuses', // launch confirmation polling (read only)
 ]);
 
 const DEFAULT_RPC = 'https://api.mainnet-beta.solana.com';

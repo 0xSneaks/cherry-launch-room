@@ -11,8 +11,33 @@ describe('buildLaunch(formData)', () => {
     const signer = { signTransaction: vi.fn(), signAllTransactions: vi.fn() };
     const { buildLaunch } = createLauncher({ connection: new Connection('http://127.0.0.1:1'), pump, signer, wallet, feeRecipient: wallet });
     const form = { ...emptyForm(), name: 'Cherry', ticker: 'PETAL', media: { type: 'image/png', size: 1 } };
-    await expect(buildLaunch(form)).rejects.toBeInstanceOf(FeeWalletIsSignerError);
+    await expect(buildLaunch(form, 'https://ipfs.io/ipfs/x')).rejects.toBeInstanceOf(FeeWalletIsSignerError);
     expect(signer.signTransaction).not.toHaveBeenCalled();
     expect(signer.signAllTransactions).not.toHaveBeenCalled();
+  });
+});
+
+describe('live send helpers', async () => {
+  const { confirmSignature, sendSigned, LaunchSendError } = await import('./launch');
+  const { Transaction: Tx, SystemProgram } = await import('@solana/web3.js');
+  const kp = Keypair.generate();
+  const tx = new Tx({ feePayer: kp.publicKey, recentBlockhash: '11111111111111111111111111111111' }).add(
+    SystemProgram.transfer({ fromPubkey: kp.publicKey, toPubkey: kp.publicKey, lamports: 0 }),
+  );
+  tx.sign(kp);
+
+  it('sendSigned returns the signature, or throws the server message', async () => {
+    const ok = vi.fn().mockResolvedValue(new Response(JSON.stringify({ signature: 'SIG' })));
+    expect(await sendSigned(tx, ok as unknown as typeof fetch)).toBe('SIG');
+    const bad = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'SEND_FAILED', message: 'insufficient lamports' }), { status: 422 }));
+    await expect(sendSigned(tx, bad as unknown as typeof fetch)).rejects.toBeInstanceOf(LaunchSendError);
+  });
+
+  it('confirmSignature waits for confirmed and surfaces on-chain errors', async () => {
+    let n = 0;
+    const conn = { getSignatureStatuses: vi.fn(async () => ({ value: [n++ < 1 ? null : { confirmationStatus: 'confirmed', err: null }] })) } as unknown as Connection;
+    await expect(confirmSignature(conn, 'SIG', 5000, 1)).resolves.toBeUndefined();
+    const failed = { getSignatureStatuses: vi.fn(async () => ({ value: [{ confirmationStatus: 'confirmed', err: { InstructionError: [0, { Custom: 6024 }] } }] })) } as unknown as Connection;
+    await expect(confirmSignature(failed, 'SIG', 5000, 1)).rejects.toBeInstanceOf(LaunchSendError);
   });
 });

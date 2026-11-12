@@ -1,11 +1,12 @@
-// The ONE function the form calls: buildLaunch(formData) → a prepared launch the confirm sheet shows
-// and signs. Wraps the unchanged launch engine (src/launch/engine.ts). Dry-run only: Cherry signs,
-// the signed bytes are dropped, nothing is sent.
+// The ONE function the form calls: buildLaunch(formData, metadataUri) → a prepared launch the confirm
+// sheet shows and signs. Wraps the launch engine (src/launch/engine.ts). Live mode: one Cherry approval,
+// the app co-signs the mint, then /api/send relays each tx IN ORDER, waiting for on-chain confirmation
+// before the next (tx 2 needs tx 1's coin). Dry-run mode: signed bytes are dropped, nothing is sent.
 import type { OnlinePumpSdk, ResolvedQuoteMint } from '@pump-fun/pump-sdk';
 import { Keypair, PublicKey, Transaction, VersionedTransaction, type Connection } from '@solana/web3.js';
 import { buildLaunch as buildLaunchTxs, type LaunchRequest } from '../launch/engine';
 import { explainLaunchError } from '../launch/errors';
-import { DRY_RUN_LABEL, DRY_RUN_METADATA_URI, FEE_SPLIT_SHORT, LAUNCH_MODE, ROUTES, USDC_MINT, type HarnessVariant } from './config';
+import { DRY_RUN_LABEL, FEE_SPLIT_SHORT, LAUNCH_MODE, ROUTES, USDC_MINT, launchLabel, type HarnessVariant } from './config';
 import { buyError, hasErrors, parseAmount, unitOf, validateForm, type FieldErrors, type LaunchForm, type PumpLimits } from './form';
 
 /** The slice of the Cherry SDK we use (CherryMiniApp.wallet). */
@@ -46,9 +47,59 @@ export interface SignResult {
   verified: boolean;
 }
 
+/** Where a live launch got to. `landed` txs are confirmed on-chain, in order. */
+export interface LaunchOutcome {
+  mint: string;
+  steps: string[];
+  signatures: string[];
+  landed: number;
+  total: number;
+  /** Plain sentence when a tx after the create failed (the coin exists; retry() finishes the rest). */
+  error?: string;
+}
+
+export type Progress = (text: string) => void;
+
 export interface PreparedLaunch {
   summary: LaunchSummary;
+  /** Dry-run: sign and drop. */
   sign(): Promise<SignResult>;
+  /** Live: sign once in Cherry, send + confirm every tx in order. Throws if the create itself fails. */
+  launch(progress: Progress): Promise<LaunchOutcome>;
+  /** Live: re-sign and send the txs that didn't land (after a partial launch). */
+  retry(progress: Progress): Promise<LaunchOutcome>;
+}
+
+export class LaunchSendError extends Error {
+  constructor(message: string, public readonly detail: unknown = null) {
+    super(message);
+    this.name = 'LaunchSendError';
+  }
+}
+
+/** POST one fully signed tx to /api/send. Returns its signature. */
+export async function sendSigned(tx: Transaction, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const res = await fetchImpl('/api/send', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tx: tx.serialize().toString('base64') }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { signature?: string; message?: string; data?: unknown; error?: string };
+  if (!res.ok || !body.signature) throw new LaunchSendError(body.message ?? body.error ?? `send failed (${res.status})`, body.data ?? null);
+  return body.signature;
+}
+
+/** Poll until `confirmed`, an on-chain error, or the timeout. */
+export async function confirmSignature(conn: Connection, signature: string, timeoutMs = 75_000, everyMs = 1200): Promise<void> {
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    const { value } = await conn.getSignatureStatuses([signature]);
+    const st = value[0];
+    if (st?.err) throw new LaunchSendError('Transaction failed on-chain', st.err);
+    if (st && (st.confirmationStatus === 'confirmed' || st.confirmationStatus === 'finalized')) return;
+    await new Promise((r) => setTimeout(r, everyMs));
+  }
+  throw new LaunchSendError('Not confirmed in time. Check Solscan before trying again.');
 }
 
 export class FormInvalidError extends Error {
@@ -104,7 +155,7 @@ async function estimateCost(conn: Connection, wallet: PublicKey, txs: Transactio
 export function createLauncher(deps: LauncherDeps) {
   const { connection, pump, signer, wallet, feeRecipient } = deps;
 
-  async function buildLaunch(form: LaunchForm): Promise<PreparedLaunch> {
+  async function buildLaunch(form: LaunchForm, metadataUri: string): Promise<PreparedLaunch> {
     // Never launch with the fee wallet as signer: the 95/5 split would name the same wallet twice.
     if (feeRecipient.equals(wallet)) throw new FeeWalletIsSignerError();
 
@@ -132,7 +183,7 @@ export function createLauncher(deps: LauncherDeps) {
     const req: LaunchRequest = {
       wallet,
       mint: mint.publicKey,
-      coin: { name: form.name.trim(), symbol: form.ticker, uri: DRY_RUN_METADATA_URI },
+      coin: { name: form.name.trim(), symbol: form.ticker, uri: metadataUri },
       quote,
       devBuy,
       mayhemMode: form.mayhem,
@@ -159,7 +210,7 @@ export function createLauncher(deps: LauncherDeps) {
 
     async function sign(): Promise<SignResult> {
       if (!mint) throw new Error('This launch was already signed. Start again.');
-      if (LAUNCH_MODE !== 'dry-run') throw new Error('Only dry-run is enabled.');
+      if (LAUNCH_MODE !== 'dry-run') throw new Error('Dry-run is off.');
       try {
         const signed =
           plan.txs.length === 1
@@ -176,7 +227,50 @@ export function createLauncher(deps: LauncherDeps) {
       }
     }
 
-    return { summary, sign };
+    const label = launchLabel(req.coin.symbol, devBuy ? `${form.initialBuy.trim()} ${unitOf(form.pair)}` : null);
+    const mintKey = mint.publicKey.toBase58();
+    const signatures: string[] = [];
+    let landed = 0;
+
+    /** Sign txs[from..] in one Cherry approval (fresh blockhash), then send + confirm each in order. */
+    async function run(from: number, progress: Progress): Promise<LaunchOutcome> {
+      const rest = plan.txs.slice(from);
+      const { blockhash } = await connection.getLatestBlockhash('confirmed');
+      rest.forEach((tx) => (tx.recentBlockhash = blockhash));
+      progress('Waiting for Cherry…');
+      const signedBytes = rest.length === 1 ? [await signer.signTransaction(rest[0], { label })] : await signer.signAllTransactions(rest, { label });
+      const signed = signedBytes.map((b) => Transaction.from(b));
+      if (from === 0) {
+        if (!mint) throw new Error('This launch was already used. Start again.');
+        signed[0].partialSign(mint); // the new coin's mint co-signs the create, after Cherry
+        mint = null; // memory only, never reused
+      }
+      for (let i = 0; i < signed.length; i++) {
+        const n = from + i + 1;
+        progress(n === 1 ? 'Creating your coin…' : `Finishing (${n}/${plan.txs.length})…`);
+        try {
+          const sig = await sendSigned(signed[i]);
+          signatures[from + i] = sig;
+          await confirmSignature(connection, sig);
+          landed = from + i + 1;
+        } catch (err) {
+          if (landed === 0) throw err; // the coin wasn't created: nothing to finish
+          return { mint: mintKey, steps: plan.steps, signatures: signatures.slice(), landed, total: plan.txs.length, error: explainLaunchError(err) };
+        }
+      }
+      return { mint: mintKey, steps: plan.steps, signatures: signatures.slice(), landed, total: plan.txs.length };
+    }
+
+    const launch = (progress: Progress) => {
+      if (LAUNCH_MODE !== 'live') throw new Error('Live launches are off.');
+      return run(0, progress);
+    };
+    const retry = (progress: Progress) => {
+      if (landed === 0 || landed >= plan.txs.length) throw new Error('Nothing to retry.');
+      return run(landed, progress);
+    };
+
+    return { summary, sign, launch, retry };
   }
 
   return { buildLaunch };

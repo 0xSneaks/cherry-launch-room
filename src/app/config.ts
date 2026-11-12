@@ -23,12 +23,18 @@ export const HARNESS_RESULTS: Record<HarnessVariant, 'untested' | 'signed' | 're
 };
 
 /**
- * 'dry-run' = Cherry signs, the signed bytes are dropped, nothing is sent.
- * There is no 'live' mode: sending needs Sneaks's approval and send + metadata-pin wiring first.
+ * 'live' = Cherry signs, the app co-signs the mint, /api/send relays each tx in order and waits for
+ * on-chain confirmation. LIVE_FOR_OWNERS_ONLY keeps it to Sneaks's wallets until his first real
+ * launch checks out on Solscan; everyone else sees "opens soon". Flip only on his PROD yes.
  */
-export const LAUNCH_MODE = 'dry-run' as const;
+export const LAUNCH_MODE = 'live' as 'live' | 'dry-run';
+export const LIVE_FOR_OWNERS_ONLY = true;
 
-/** Wallet sheet label in dry-run (≤ 80 chars). Says plainly that nothing is sent. */
+/** Cherry wallet-sheet label (≤ 80 chars, amount must match the tx). */
+export function launchLabel(ticker: string, buy: string | null): string {
+  return `Launch $${ticker} on Pump.fun${buy ? ` + buy ${buy}` : ''}`.slice(0, 80);
+}
+
 export const DRY_RUN_LABEL = 'TEST — sign only, will not be sent';
 
 /**
