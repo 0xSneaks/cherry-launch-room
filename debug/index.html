@@ -34,9 +34,11 @@
   <div class="warn">TEST. Each button asks your Cherry wallet to <b>sign</b> a Pump.fun launch. The signed bytes are thrown away. <b>Nothing is sent. No SOL moves.</b></div>
   <label class="muted" for="feeRecipient">Variant D 5% recipient (an address you control, not your Cherry wallet)</label>
   <input id="feeRecipient" spellcheck="false" autocomplete="off" />
+  <div id="recipientWarn" class="warn" hidden>⚠️ This is the wallet Cherry signs with. The 5% recipient must be a different wallet. The test will switch to your second wallet; a real launch is blocked.</div>
   <div id="pump" class="muted">Reading Pump settings…</div>
   <label class="muted" for="pairMint">H pair mint (a pump coin or a listed token)</label>
   <input id="pairMint" spellcheck="false" autocomplete="off" placeholder="paste a mint address" />
+  <div class="muted">"our sim" runs the txs in order on a mainnet fork (tx 2 sees tx 1's coin). Nothing is sent.</div>
   <div id="variants"></div>
   <div id="verdict"></div>
   <pre id="table"></pre>

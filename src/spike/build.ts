@@ -15,7 +15,8 @@ import {
   type TransactionInstruction,
 } from '@solana/web3.js';
 import BN from 'bn.js';
-import { APP_SHARE_BPS, CHERRY_APP_ID, SPIKE_BUY_LAMPORTS, TX_BYTE_LIMIT, USER_SHARE_BPS } from './constants';
+import { assertRecipientNotSigner } from '../launch/guard.js';
+import { APP_SHARE_BPS, CHERRY_APP_ID, SPIKE_BUY_LAMPORTS, TX_BYTE_LIMIT, USER_SHARE_BPS } from './constants.js';
 
 export type Variant = 'A' | 'B' | 'C' | 'D' | 'E';
 
@@ -83,9 +84,7 @@ export function referenceInstruction(wallet: PublicKey, appId = CHERRY_APP_ID): 
 }
 
 export function feeShareholders(wallet: PublicKey, appFeeRecipient: PublicKey) {
-  if (wallet.equals(appFeeRecipient)) {
-    throw new Error('Fee-share recipient must differ from the creator wallet.');
-  }
+  assertRecipientNotSigner(wallet, appFeeRecipient);
   return [
     { address: wallet, shareBps: USER_SHARE_BPS },
     { address: appFeeRecipient, shareBps: APP_SHARE_BPS },

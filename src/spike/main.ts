@@ -5,16 +5,15 @@ import { Buffer } from 'buffer';
 (globalThis as { Buffer?: typeof Buffer }).Buffer ??= Buffer;
 
 import { CherryMiniApp, isInsideCherry } from '@cherrydotfun/miniapp-sdk';
-import { OnlinePumpSdk, type FeeConfig, type Global, type ResolvedQuoteMint } from '@pump-fun/pump-sdk';
-import BN from 'bn.js';
-import { buildLaunch, type LaunchRequest } from '../launch/engine';
+import { OnlinePumpSdk } from '@pump-fun/pump-sdk';
 import { explainLaunchError } from '../launch/errors';
+import { recipientIsSigner } from '../launch/guard';
 import { Connection, Keypair, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
-import { VARIANTS, buildVariant, fitsLegacy, serializedSize, type Variant } from './build';
-import { SPIKE_COIN } from './coin';
+import { VARIANTS, fitsLegacy, serializedSize, type Variant } from './build';
 import { APP_FEE_WALLET, SPIKE_LABEL, SPIKE_OWNER_WALLETS, SPIKE_TEST_RECIPIENT } from './constants';
 import { isKill, refusalFields, toMarkdown, type SpikeRow } from './result';
 import { isOwner, sessionFromResponse, short, type SessionState } from './session';
+import { ENGINE_VARIANTS, USDC, buildAnyVariant, isEngine, type EngineVariant } from './variants';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const log = (msg: string) => {
@@ -27,22 +26,40 @@ const connection = new Connection(`${location.origin}/api/rpc`, 'confirmed');
 const pump = new OnlinePumpSdk(connection);
 const rows: SpikeRow[] = [];
 let cherry: CherryMiniApp | null = null;
-let pumpState: { global: Global; feeConfig: FeeConfig | null } | null = null;
 
 function signerWallet(): PublicKey | null {
   const key = cherry?.paymentWallet ?? cherry?.wallet.publicKey ?? null;
   return key ? new PublicKey(key) : null;
 }
 
-async function simulate(tx: Transaction): Promise<string> {
+/** Plain RPC simulation of ONE tx against today's chain (fallback only). */
+async function simulateAlone(tx: Transaction): Promise<string> {
   try {
     const vtx = new VersionedTransaction(tx.compileMessage());
     const sim = await connection.simulateTransaction(vtx, { sigVerify: false, replaceRecentBlockhash: true });
-    if (!sim.value.err) return `ok ${sim.value.unitsConsumed ?? '?'}CU`;
+    if (!sim.value.err) return `ok ${sim.value.unitsConsumed ?? '?'}CU (alone)`;
     const last = (sim.value.logs ?? []).filter((l) => /Error|failed/i.test(l)).slice(-1)[0] ?? '';
-    return `err ${JSON.stringify(sim.value.err)} ${last}`.slice(0, 160);
+    return `err ${JSON.stringify(sim.value.err)} ${last} (alone)`.slice(0, 160);
   } catch (e) {
     return `sim unavailable: ${(e as Error).message}`.slice(0, 120);
+  }
+}
+
+/**
+ * Chained simulation (server fork, /api/sim): tx 2 runs on the state tx 1 left, the way the
+ * launch really lands. Plain per-tx RPC simulation fails every later tx (3012 / IncorrectProgramId)
+ * because the coin doesn't exist yet. Falls back to per-tx RPC sim if the server is down.
+ */
+async function simulate(txs: Transaction[]): Promise<string[]> {
+  try {
+    const body = { txs: txs.map((t) => t.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64')) };
+    const res = await fetch('/api/sim', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { results } = (await res.json()) as { results: { ok: boolean; cu: number; err?: string }[] };
+    return results.map((r) => (r.ok ? `ok ${r.cu}CU (chained)` : `err ${r.err} (chained)`.slice(0, 160)));
+  } catch (e) {
+    log(`chained sim unavailable (${(e as Error).message}); simulating each tx alone`);
+    return Promise.all(txs.map(simulateAlone));
   }
 }
 
@@ -56,48 +73,6 @@ function render() {
       : '';
 }
 
-const USDC = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
-
-/** F–H go through the REAL launch engine (src/launch), with live Pump state. */
-const ENGINE_VARIANTS = {
-  F: 'USDC pair: create + 1 USDC first buy + 95/5 split (one approval)',
-  G: 'Mayhem mode: create + 0.01 SOL first buy + 95/5 split',
-  H: 'Custom pair (mint below): create + 95/5 split (+2.5% creator fee if Pump allows)',
-} as const;
-type EngineVariant = keyof typeof ENGINE_VARIANTS;
-const isEngine = (v: string): v is EngineVariant => v in ENGINE_VARIANTS;
-
-async function engineTxs(variant: EngineVariant, wallet: PublicKey, mint: PublicKey, appFeeRecipient: PublicKey) {
-  const [global, feeConfig, quoteControl, { blockhash }] = await Promise.all([
-    pump.fetchGlobal(),
-    pump.fetchFeeConfig().catch(() => null),
-    pump.fetchQuoteControl().catch(() => null),
-    connection.getLatestBlockhash('confirmed'),
-  ]);
-  let quote: ResolvedQuoteMint | null = null;
-  if (variant === 'F') quote = await pump.resolveQuoteMint(USDC);
-  if (variant === 'H') {
-    const raw = ($('pairMint') as HTMLInputElement).value.trim();
-    if (!raw) throw new Error('Paste a pair mint for H (a pump coin or a listed token).');
-    quote = await pump.resolveQuoteMint(new PublicKey(raw));
-  }
-  const exotic = quote?.source === 'quoteControl' || quote?.source === 'pumpCoin';
-  const req: LaunchRequest = {
-    wallet,
-    mint,
-    coin: SPIKE_COIN,
-    quote,
-    devBuy: variant === 'F' ? new BN(1_000_000) : variant === 'G' ? new BN(10_000_000) : null,
-    mayhemMode: variant === 'G',
-    creatorFeeBps: exotic && global.creatorFeeConfigurable ? BN.min(new BN(250), global.maxConfigurableCreatorFeeBps) : null,
-    holderReward: false,
-  };
-  const quoteTransferFee = quote && quote.source !== 'sol' ? await pump.fetchQuoteTransferFee(quote.mint).catch(() => null) : null;
-  const plan = await buildLaunch(req, { global, feeConfig, quoteControl, quoteTransferFee, recentBlockhash: blockhash, appFeeRecipient });
-  log(`${variant}: ${plan.steps.join(' → ')}${quote ? ` · pair ${quote.source}` : ''}`);
-  return plan.txs;
-}
-
 async function run(variant: Variant | EngineVariant) {
   const wallet = signerWallet();
   if (!cherry || !wallet) return log('No Cherry wallet. Open this page inside Cherry.');
@@ -107,39 +82,36 @@ async function run(variant: Variant | EngineVariant) {
   let mint: Keypair | null = Keypair.generate(); // memory only, dropped after the run
   const row: SpikeRow = { variant, result: 'ERROR', bytes: [], at: new Date().toISOString() };
   try {
+    // GUARD: the 5% recipient must never be the signing wallet. The test swaps in the owner's
+    // second wallet and SAYS so; production blocks the launch (src/launch/guard.ts).
     let appFeeRecipient = new PublicKey(($('feeRecipient') as HTMLInputElement).value.trim() || APP_FEE_WALLET);
-    if (appFeeRecipient.equals(wallet)) {
-      // Pump refuses a split with the same wallet twice: use the owner's second wallet (else a throwaway). Nothing is sent.
+    if (recipientIsSigner(wallet, appFeeRecipient)) {
       const second = new PublicKey(SPIKE_TEST_RECIPIENT);
-      appFeeRecipient = second.equals(wallet) ? Keypair.generate().publicKey : second;
-      log(`${variant}: 5% recipient = your wallet, so this test uses ${short(appFeeRecipient.toBase58())} (nothing is sent).`);
+      if (recipientIsSigner(wallet, second)) throw new Error('5% recipient = your signing wallet. Paste a different recipient above.');
+      appFeeRecipient = second;
+      ($('feeRecipient') as HTMLInputElement).value = second.toBase58();
+      warnRecipient(wallet);
+      log(`${variant}: 5% recipient was your signing wallet. Switched to ${short(second.toBase58())} for this test.`);
     }
-    let txs: Transaction[];
-    if (!spec) {
-      txs = await engineTxs(variant as EngineVariant, wallet, mint.publicKey, appFeeRecipient);
-    } else {
-      if (spec.txs.some((t) => t.buy) && !pumpState) {
-        const [global, feeConfig] = await Promise.all([pump.fetchGlobal(), pump.fetchFeeConfig().catch(() => null)]);
-        pumpState = { global, feeConfig };
-      }
-      const { blockhash } = await connection.getLatestBlockhash('confirmed');
-      txs = await buildVariant(variant as Variant, {
-        wallet,
-        mint: mint.publicKey,
-        recentBlockhash: blockhash,
-        coin: SPIKE_COIN,
-        global: pumpState?.global,
-        feeConfig: pumpState?.feeConfig,
-        appFeeRecipient,
-      });
-    }
+    const pairRaw = ($('pairMint') as HTMLInputElement).value.trim();
+    const { blockhash } = await connection.getLatestBlockhash('confirmed');
+    const built = await buildAnyVariant(variant, {
+      pump,
+      wallet,
+      mint: mint.publicKey,
+      appFeeRecipient,
+      recentBlockhash: blockhash,
+      pairMint: pairRaw ? new PublicKey(pairRaw) : undefined,
+    });
+    const txs = built.txs;
+    log(`${variant}: ${built.steps.join(' → ')}${built.quote ? ` · pair ${built.quote.source}` : ''}`);
     row.bytes = txs.map(serializedSize);
     if ((spec && !spec.signable) || !txs.every(fitsLegacy)) {
       row.result = 'SKIPPED';
       row.reason = 'over 1232 B: measured only';
       return;
     }
-    row.sim = await Promise.all(txs.map(simulate));
+    row.sim = await simulate(txs);
     log(`${variant}: asking Cherry to sign ${txs.length} tx (${row.bytes.join(' + ')} B). Nothing will be sent.`);
 
     const signed: Uint8Array[] =
@@ -165,6 +137,18 @@ async function run(variant: Variant | EngineVariant) {
     setVariantButtons(isOwner(auth, SPIKE_OWNER_WALLETS));
     ($('copy') as HTMLButtonElement).disabled = false;
   }
+}
+
+/** Visible warning when the 5% recipient equals the signing wallet. */
+function warnRecipient(wallet: PublicKey | null) {
+  const raw = ($('feeRecipient') as HTMLInputElement).value.trim();
+  let same = false;
+  try {
+    same = Boolean(wallet && raw && recipientIsSigner(wallet, raw));
+  } catch {
+    /* not an address yet */
+  }
+  $('recipientWarn').hidden = !same;
 }
 
 /** What Pump allows right now, read from chain (Global + QuoteControl). */
@@ -244,6 +228,7 @@ async function boot() {
   void showPumpSettings();
   $('copy').onclick = () => void navigator.clipboard?.writeText(toMarkdown(rows)).then(() => log('Table copied.'));
   ($('feeRecipient') as HTMLInputElement).value = APP_FEE_WALLET;
+  ($('feeRecipient') as HTMLInputElement).oninput = () => warnRecipient(signerWallet());
   render();
   renderWho();
   if (!inCherry) {
@@ -254,6 +239,7 @@ async function boot() {
     cherry = new CherryMiniApp({ initTimeout: 8000 });
     await cherry.init();
     renderWho();
+    warnRecipient(signerWallet());
     await exchangeLaunchToken(cherry.launchToken);
   } catch (e) {
     auth = { kind: 'signed-out', reason: `Cherry handshake failed: ${(e as Error).message}` };

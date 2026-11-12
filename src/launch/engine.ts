@@ -22,8 +22,9 @@ import {
 import { NATIVE_MINT, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { ComputeBudgetProgram, PublicKey, SystemProgram, Transaction, type TransactionInstruction } from '@solana/web3.js';
 import BN from 'bn.js';
-import { APP_SHARE_BPS, CHERRY_APP_ID, TX_BYTE_LIMIT, USER_SHARE_BPS } from '../spike/constants';
-import { HOLDER_REWARD_ALLOWED, LIMITS, TOKEN_QUOTE_CU } from './policy';
+import { APP_SHARE_BPS, CHERRY_APP_ID, TX_BYTE_LIMIT, USER_SHARE_BPS } from '../spike/constants.js';
+import { assertRecipientNotSigner } from './guard.js';
+import { HOLDER_REWARD_ALLOWED, LIMITS, TOKEN_QUOTE_CU } from './policy.js';
 
 export interface CoinMeta {
   name: string;
@@ -118,7 +119,7 @@ export function referenceInstruction(wallet: PublicKey): TransactionInstruction 
 }
 
 export function feeShareholders(wallet: PublicKey, appFeeRecipient: PublicKey) {
-  if (wallet.equals(appFeeRecipient)) throw new Error('Fee-share recipient must differ from the creator wallet.');
+  assertRecipientNotSigner(wallet, appFeeRecipient);
   return [
     { address: wallet, shareBps: USER_SHARE_BPS },
     { address: appFeeRecipient, shareBps: APP_SHARE_BPS },

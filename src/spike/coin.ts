@@ -1,4 +1,4 @@
-import type { CoinMeta } from './build';
+import type { CoinMeta } from './build.js';
 
 // Spike coin metadata. Realistic lengths (Pinata CIDv1 URI = 80 chars) so byte counts mean something.
 // The URI is never fetched: nothing is broadcast.
