@@ -12,7 +12,7 @@ import { runCherryCheck } from './cherryCheck';
 import { UNKNOWN_LAUNCH_ERROR, errorRef, explainLaunchError } from '../launch/errors';
 import { SPIKE_OWNER_WALLETS } from '../spike/constants';
 import { isOwner, sessionFromResponse, type SessionState } from '../spike/session';
-import { CREATOR_HINT, DRY_RUN_METADATA_URI, FEE_LINE, HOLDERS_LINE, LAUNCH_MODE, LIVE_FOR_OWNERS_ONLY, QUICK_BUYS } from './config';
+import { CREATOR_HINT, DRY_RUN_METADATA_URI, FEE_LINE, HOLDERS_LINE, HOLDERS_SHORT, LAUNCH_MODE, LIVE_FOR_OWNERS_ONLY, QUICK_BUYS } from './config';
 import { UploadError, uploadMetadata } from './upload';
 import { fetchPairs, filterPairs, fmtUsd, logo, type PairFilter, type PairInfo, type PairsPayload } from './pairs';
 import {
@@ -480,9 +480,12 @@ function showDone() {
   const media = $('doneMedia');
   media.replaceChildren();
   if (mediaUrl) media.append(Object.assign(document.createElement('img'), { src: mediaUrl, alt: '' }));
-  $('doneStatus').textContent = done
-    ? 'Creator fees: you 95% · PetalDeck 5%, set on-chain.'
-    : "The fee-split step didn't go through. Your coin exists; tap Finish to set the 95/5 split.";
+  const holders = live.launch.summary.feeSplit === HOLDERS_SHORT; // holder-reward coin: no split exists
+  $('doneStatus').textContent = holders
+    ? "Creator fees go to your coin's holders, set on-chain."
+    : done
+      ? 'Creator fees: you 95% · PetalDeck 5%, set on-chain.'
+      : "The fee-split step didn't go through. Your coin exists; tap Finish to set the 95/5 split.";
   $('doneStatus').classList.toggle('warn-text', !done);
   $('doneRetry').hidden = done;
   openSheet('doneSheet');
