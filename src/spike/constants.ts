@@ -26,7 +26,7 @@ export const SPIKE_LABEL = 'TEST — sign only, will not be sent';
 export const SPIKE_OWNER_WALLETS: readonly string[] = [
   APP_FEE_WALLET, // Sneaks (OWNER, 2026-11-09)
   'BGa7…YD7R', // Sneaks's Cherry signing wallet as Cherry shows it (start…end); swap for the full address when known
-  'CHAF…kxP3', // Sneaks's Cherry Wallet ("app pays with", screenshot 2026-11-13 12:20); swap for the full address when known
+  '69fm…Pxr7', // Sneaks's external launch wallet (screenshot 2026-11-13 05:10 ET); external wallets skip the Cherry Wallet content scan
 ];
 
 /** Sign-only test 5% recipient when the signer IS the fee wallet (Sneaks's second wallet, 2026-11-09). Test only. */
