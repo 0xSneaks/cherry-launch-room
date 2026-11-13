@@ -1,6 +1,7 @@
 // Read-only Solana JSON-RPC proxy. Allowlisted reads + simulation only: anything that could
 // broadcast is refused here. Launch txs go out ONLY through /api/send, which checks their shape.
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { sameOrigin } from '../src/server/guard.js';
 
 export const ALLOWED_METHODS = new Set([
   'getLatestBlockhash',
@@ -50,6 +51,8 @@ export function checkCall(call: RpcCall): string | null {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
+  // Other websites can't spend this app's RPC quota from a visitor's browser.
+  if (!sameOrigin(req.headers.origin, req.headers.host)) return res.status(403).json({ error: 'FORBIDDEN_ORIGIN' });
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
   const calls: RpcCall[] = Array.isArray(body) ? body : [body];
   if (calls.length === 0 || calls.length > 10) return res.status(400).json({ error: 'bad batch' });
