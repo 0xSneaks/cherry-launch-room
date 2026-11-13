@@ -11,7 +11,7 @@ import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction } from '@
 import { explainLaunchError } from '../launch/errors';
 import { SPIKE_OWNER_WALLETS } from '../spike/constants';
 import { isOwner, sessionFromResponse, type SessionState } from '../spike/session';
-import { DRY_RUN_METADATA_URI, FEE_LINE, LAUNCH_MODE, LIVE_FOR_OWNERS_ONLY, QUICK_BUYS } from './config';
+import { CREATOR_HINT, DRY_RUN_METADATA_URI, FEE_LINE, HOLDERS_LINE, LAUNCH_MODE, LIVE_FOR_OWNERS_ONLY, QUICK_BUYS } from './config';
 import { UploadError, uploadMetadata } from './upload';
 import { fetchPairs, filterPairs, fmtUsd, logo, type PairFilter, type PairInfo, type PairsPayload } from './pairs';
 import {
@@ -124,6 +124,9 @@ function render() {
         : "Pump's mayhem launch mode. SOL or USDC pairs only, set once at creation.";
 
   renderPickRow();
+  const holders = form.rewards === 'holders';
+  $('rewardsHint').textContent = holders ? HOLDERS_LINE : CREATOR_HINT;
+  $('feeLine').textContent = holders ? HOLDERS_LINE : FEE_LINE;
   $<HTMLButtonElement>('create').disabled = hasErrors(requiredErrors(form));
 }
 
@@ -507,7 +510,7 @@ function measureTier() {
 async function loadPumpLimits() {
   try {
     const g = await pump.fetchGlobal();
-    limits = { mayhemEnabled: g.mayhemModeEnabled };
+    limits = { mayhemEnabled: g.mayhemModeEnabled, holdersEnabled: g.isHolderRewardEnabled };
   } catch {
     limits = null;
   }

@@ -6,7 +6,7 @@ import type { OnlinePumpSdk, ResolvedQuoteMint } from '@pump-fun/pump-sdk';
 import { Keypair, PublicKey, Transaction, VersionedTransaction, type Connection } from '@solana/web3.js';
 import { buildLaunch as buildLaunchTxs, type LaunchRequest } from '../launch/engine';
 import { explainLaunchError } from '../launch/errors';
-import { DRY_RUN_LABEL, FEE_SPLIT_SHORT, LAUNCH_MODE, ROUTES, USDC_MINT, launchLabel, type HarnessVariant } from './config';
+import { DRY_RUN_LABEL, FEE_SPLIT_SHORT, HOLDERS_SHORT, LAUNCH_MODE, ROUTES, USDC_MINT, launchLabel, type HarnessVariant } from './config';
 import { buyError, hasErrors, parseAmount, unitOf, validateForm, type FieldErrors, type LaunchForm, type PumpLimits } from './form';
 
 /** The slice of the Cherry SDK we use (CherryMiniApp.wallet). */
@@ -165,7 +165,7 @@ export function createLauncher(deps: LauncherDeps) {
       pump.fetchQuoteControl().catch(() => null),
       connection.getLatestBlockhash('confirmed'),
     ]);
-    const limits: PumpLimits = { mayhemEnabled: global.mayhemModeEnabled };
+    const limits: PumpLimits = { mayhemEnabled: global.mayhemModeEnabled, holdersEnabled: global.isHolderRewardEnabled };
 
     let quote: ResolvedQuoteMint | null = null;
     if (form.pair === 'USDC') quote = await pump.resolveQuoteMint(new PublicKey(USDC_MINT));
@@ -188,7 +188,7 @@ export function createLauncher(deps: LauncherDeps) {
       devBuy,
       mayhemMode: form.mayhem,
       creatorFeeBps: null, // H without a custom fee: this form has no creator-fee field
-      holderReward: false, // 'Holders' is shown as Soon: no harness variant covers it with the 95/5 split
+      holderReward: form.rewards === 'holders', // creator fees go to holders: no 95/5 split tx
     };
     const quoteTransferFee = quote && quote.source !== 'sol' ? await pump.fetchQuoteTransferFee(quote.mint).catch(() => null) : null;
     const plan = await buildLaunchTxs(req, { global, feeConfig, quoteControl, quoteTransferFee, recentBlockhash: blockhash, appFeeRecipient: feeRecipient });
@@ -201,7 +201,7 @@ export function createLauncher(deps: LauncherDeps) {
       initialBuy: devBuy ? `${form.initialBuy.trim()} ${unitOf(form.pair)}` : 'None',
       costLamports: cost.lamports,
       costNote: cost.note,
-      feeSplit: FEE_SPLIT_SHORT,
+      feeSplit: form.rewards === 'holders' ? HOLDERS_SHORT : FEE_SPLIT_SHORT,
       steps: plan.steps,
       approvals: 1,
       dryRun: LAUNCH_MODE === 'dry-run',

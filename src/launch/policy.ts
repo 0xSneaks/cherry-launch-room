@@ -2,9 +2,10 @@
 
 /**
  * Holder-reward coins send every creator fee to holders, so no 95/5 split is possible:
- * PetalDeck earns 0 on them. OFF until Sneaks decides.
+ * PetalDeck earns 0 on them. ON: OWNER RULING (Sneaks 2026-11-13) "keep it how pump has it" —
+ * Creator | Holders like pump.fun's create form. The UI says plainly that Holders pays PetalDeck nothing.
  */
-export const HOLDER_REWARD_ALLOWED = false;
+export const HOLDER_REWARD_ALLOWED = true;
 
 /** create_v2 string limits (pump-public-docs COIN_CREATION.md: name 32, symbol 13, uri 200). */
 export const LIMITS = { name: 32, symbol: 13, uri: 200 } as const;

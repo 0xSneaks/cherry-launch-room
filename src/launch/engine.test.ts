@@ -184,8 +184,9 @@ describe('validation: every Pump rule, in plain words', () => {
     expect(errs({ creatorFeeBps: new BN(301), quote: qc })[0]).toMatch(/between/);
     expect(errs({ creatorFeeBps: new BN(250), quote: qc }, { creatorFeeConfigurable: false })[0]).toMatch(/switched off/);
   });
-  it('holder rewards stay OFF until Sneaks decides (no 5% possible on them)', () => {
-    expect(errs({ holderReward: true })[0]).toMatch(/not available in PetalDeck/);
+  it('holder rewards follow Pump (Sneaks 2026-11-13): allowed while Pump has them on', () => {
+    expect(errs({ holderReward: true })).toEqual([]);
+    expect(errs({ holderReward: true }, { isHolderRewardEnabled: false })[0]).toMatch(/holder rewards switched off/);
   });
   it('refuses Pump paused, a zero dev buy, and wallet == app recipient', () => {
     expect(errs({}, { createV2Enabled: false })[0]).toMatch(/paused/);
@@ -193,7 +194,13 @@ describe('validation: every Pump rule, in plain words', () => {
     expect(validateLaunch(req({ wallet: new PublicKey(APP_FEE_WALLET) }), ctx())[0]).toMatch(/differ/);
   });
   it('buildLaunch throws the same problems', async () => {
-    await expect(buildLaunch(req({ holderReward: true }), ctx())).rejects.toBeInstanceOf(LaunchValidationError);
+    await expect(buildLaunch(req({ devBuy: new BN(0) }), ctx())).rejects.toBeInstanceOf(LaunchValidationError);
+  });
+  it('a Holders coin has no fee-split tx (nothing to split) and still carries the reference key', async () => {
+    const plan = await buildLaunch(req({ holderReward: true, devBuy: new BN(10_000_000) }), ctx());
+    expect(plan.steps.some((s) => /creator fees/i.test(s))).toBe(false);
+    expect(plan.txs.flatMap((t) => t.instructions).some((ix) => ix.programId.equals(PUMP_FEE_PROGRAM_ID))).toBe(false);
+    expect(plan.bytes.every((b) => b <= TX_BYTE_LIMIT)).toBe(true);
   });
 });
 

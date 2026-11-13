@@ -60,4 +60,9 @@ const pct = (bps: number) => `${bps / 100}%`;
 export const FEE_LINE = `PetalDeck takes ${pct(APP_SHARE_BPS)} of creator fees. You keep ${pct(USER_SHARE_BPS)}.`;
 export const FEE_SPLIT_SHORT = `You ${pct(USER_SHARE_BPS)} · PetalDeck ${pct(APP_SHARE_BPS)}`;
 
+/** Holders: Pump pays every creator fee to the coin's holders; there is nothing to split. */
+export const HOLDERS_LINE = "Creator fees go to your coin's holders. You and PetalDeck get none.";
+export const HOLDERS_SHORT = 'All to holders';
+export const CREATOR_HINT = `You keep ${pct(USER_SHARE_BPS)} of creator fees. PetalDeck takes ${pct(APP_SHARE_BPS)}.`;
+
 export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';

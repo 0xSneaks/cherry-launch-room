@@ -25,7 +25,7 @@ export interface LaunchForm {
   telegram: string;
   pair: Pair;
   customMint: string;
-  /** Who gets creator rewards. 'holders' is not available yet (no 95/5 split possible). */
+  /** Who gets creator rewards. 'holders' = Pump holder rewards (no 95/5 split: PetalDeck earns 0). */
   rewards: Rewards;
   mayhem: boolean;
   /** Decimal string in the pair's unit, set in the buy sheet. Empty = no initial buy. */
@@ -35,6 +35,8 @@ export interface LaunchForm {
 /** What Pump allows right now (read from chain). null = not loaded. */
 export interface PumpLimits {
   mayhemEnabled: boolean;
+  /** Pump Global.isHolderRewardEnabled. */
+  holdersEnabled?: boolean;
 }
 
 export type Field = keyof LaunchForm;
@@ -135,7 +137,7 @@ export function validateForm(f: LaunchForm, limits: PumpLimits | null): FieldErr
   if (f.pair === 'CUSTOM' && !isValidMint(f.customMint)) {
     e.customMint = f.customMint.trim() ? 'Not a valid token mint address.' : 'Paste the pair token mint.';
   }
-  if (f.rewards === 'holders') e.rewards = 'Holder rewards are coming soon.';
+  if (f.rewards === 'holders' && limits && limits.holdersEnabled === false) e.rewards = 'Pump has holder rewards switched off right now.';
   if (f.mayhem) {
     if (f.pair === 'CUSTOM') e.mayhem = 'Mayhem mode works with SOL or USDC only.';
     else if (limits && !limits.mayhemEnabled) e.mayhem = 'Pump has mayhem mode off right now.';

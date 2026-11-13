@@ -55,8 +55,9 @@ describe('optional fields', () => {
     expect(validateForm(ready({ pair: 'CUSTOM', customMint: 'nope' }), open).customMint).toMatch(/valid/);
     expect(validateForm(ready({ pair: 'CUSTOM', customMint: MINT }), open).customMint).toBeUndefined();
   });
-  it('holders is not selectable yet', () => {
-    expect(validateForm(ready({ rewards: 'holders' }), open).rewards).toMatch(/soon/i);
+  it('holders is selectable like pump.fun, unless Pump switches holder rewards off', () => {
+    expect(validateForm(ready({ rewards: 'holders' }), open).rewards).toBeUndefined();
+    expect(validateForm(ready({ rewards: 'holders' }), { ...open, holdersEnabled: false }).rewards).toMatch(/switched off/);
   });
   it('mayhem: SOL/USDC only, and only when Pump has it on', () => {
     expect(validateForm(ready({ mayhem: true }), open).mayhem).toBeUndefined();
