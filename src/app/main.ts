@@ -8,7 +8,7 @@ import './styles.css';
 import { CherryMiniApp, getBridgeError, isInsideCherry } from '@cherrydotfun/miniapp-sdk';
 import { OnlinePumpSdk } from '@pump-fun/pump-sdk';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction } from '@solana/web3.js';
-import { explainLaunchError } from '../launch/errors';
+import { UNKNOWN_LAUNCH_ERROR, errorRef, explainLaunchError } from '../launch/errors';
 import { SPIKE_OWNER_WALLETS } from '../spike/constants';
 import { isOwner, sessionFromResponse, type SessionState } from '../spike/session';
 import { CREATOR_HINT, DRY_RUN_METADATA_URI, FEE_LINE, HOLDERS_LINE, LAUNCH_MODE, LIVE_FOR_OWNERS_ONLY, QUICK_BUYS } from './config';
@@ -357,7 +357,7 @@ function fillConfirm(s: LaunchSummary) {
   $('sheetDryRun').hidden = !s.dryRun;
 }
 
-function showError(err: unknown) {
+function showError(err: unknown, stage = 'app') {
   if (getBridgeError(err)?.code === 'USER_REJECTED') return; // silent, per Cherry guidance
   if (err instanceof FormInvalidError) {
     Object.keys(err.fields).forEach((f) => touched.add(f as Field));
@@ -365,7 +365,9 @@ function showError(err: unknown) {
     return toast(err.message, 'error');
   }
   if (err instanceof FeeWalletIsSignerError || err instanceof UploadError) return toast(err.message, 'error', 6000);
-  toast(explainLaunchError(err), 'error', 6000);
+  const msg = explainLaunchError(err);
+  // Unknown errors stay generic, plus a short code (stage + error kind, no raw text) so a screenshot is enough to debug.
+  toast(msg === UNKNOWN_LAUNCH_ERROR ? `${msg} (ref ${errorRef(stage, err)})` : msg, 'error', 8000);
 }
 
 function signedInWallet(): PublicKey | null {
@@ -421,7 +423,7 @@ async function onBuyDone(skip: boolean) {
       renderBuy();
     } else {
       closeSheet('buySheet');
-      showError(err);
+      showError(err, 'prep');
     }
   } finally {
     btn.disabled = false;
@@ -453,7 +455,7 @@ async function onSign() {
     toast(res.verified ? 'Signed in Cherry. Dry run: nothing was sent.' : 'Signed, but a signature did not verify. Nothing was sent.', res.verified ? 'success' : 'error', 6000);
   } catch (err) {
     closeSheet('sheet');
-    showError(err);
+    showError(err, 'sign');
   } finally {
     btn.disabled = back.disabled = false;
     btn.textContent = LAUNCH_MODE === 'live' ? 'Launch coin' : 'Sign in Cherry';
@@ -487,7 +489,7 @@ async function onRetry() {
   try {
     live.outcome = await live.launch.retry((t) => (btn.textContent = t));
   } catch (err) {
-    showError(err);
+    showError(err, 'retry');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Finish';

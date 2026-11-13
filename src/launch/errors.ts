@@ -83,6 +83,13 @@ function customCode(err: unknown): number | null {
   return m[1] ? Number(m[1]) : parseInt(m[2], 16);
 }
 
+/** Short, non-sensitive code for an unknown error: stage + Cherry bridge code or error class. Never raw text. */
+export function errorRef(stage: string, err: unknown): string {
+  const be = getBridgeError(err);
+  const kind = be ? `${be.code}${be.policyCode ? '.' + be.policyCode : ''}` : err instanceof Error ? err.name : typeof err;
+  return `${stage}-${kind}`.replace(/[^A-Za-z0-9._-]/g, '').slice(0, 48);
+}
+
 export function explainLaunchError(err: unknown): string {
   if (err instanceof LaunchValidationError) return err.problems.join(' ');
   if (err instanceof LaunchTooLargeError) return 'This pair is too complex to launch from Cherry yet. Pick another pair.';

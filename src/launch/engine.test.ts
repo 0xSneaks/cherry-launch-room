@@ -23,7 +23,7 @@ import {
   type LaunchPlan,
   type LaunchRequest,
 } from './engine';
-import { explainLaunchError } from './errors';
+import { errorRef, explainLaunchError } from './errors';
 
 const k = () => Keypair.generate().publicKey;
 const USDC = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
@@ -320,5 +320,13 @@ describe('token programs (F IncorrectProgramId)', () => {
   it('SOL pair: fee-share tx has no ATA create', async () => {
     const plan = await buildLaunch(req(), ctx());
     expect(ataCreates(plan.txs[plan.txs.length - 1])).toEqual([]);
+  });
+});
+
+describe('errorRef', () => {
+  it('is stage + error class, never the raw message', () => {
+    const e = new TypeError('secret https://rpc.example/?api-key=abc');
+    expect(errorRef('prep', e)).toBe('prep-TypeError');
+    expect(errorRef('sign', 'boom')).toBe('sign-string');
   });
 });
