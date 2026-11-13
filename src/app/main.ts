@@ -366,8 +366,8 @@ function showError(err: unknown, stage = 'app') {
   }
   if (err instanceof FeeWalletIsSignerError || err instanceof UploadError) return toast(err.message, 'error', 6000);
   const msg = explainLaunchError(err);
-  // Unknown errors stay generic, plus a short code (stage + error kind, no raw text) so a screenshot is enough to debug.
-  toast(msg === UNKNOWN_LAUNCH_ERROR ? `${msg} (ref ${errorRef(stage, err)})` : msg, 'error', 8000);
+  // Unknown errors and Cherry refusals carry the code, so one screenshot says which rule fired.
+  toast(msg === UNKNOWN_LAUNCH_ERROR || getBridgeError(err) ? `${msg} (ref ${errorRef(stage, err)})` : msg, 'error', 8000);
 }
 
 function signedInWallet(): PublicKey | null {

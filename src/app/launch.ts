@@ -237,6 +237,10 @@ export function createLauncher(deps: LauncherDeps) {
       const rest = plan.txs.slice(from);
       const { blockhash } = await connection.getLatestBlockhash('confirmed');
       rest.forEach((tx) => (tx.recentBlockhash = blockhash));
+      // The new coin's mint signs the create BEFORE Cherry, so Cherry Wallet sees every other signer
+      // already present (it may refuse a tx with a missing, unexplained signer). Re-signed after
+      // Cherry too, in case the host changed the message.
+      if (from === 0 && mint) rest[0].partialSign(mint);
       progress('Waiting for Cherry…');
       const signedBytes = rest.length === 1 ? [await signer.signTransaction(rest[0], { label })] : await signer.signAllTransactions(rest, { label });
       const signed = signedBytes.map((b) => Transaction.from(b));
