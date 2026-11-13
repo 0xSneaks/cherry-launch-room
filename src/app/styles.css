@@ -202,6 +202,7 @@ input:focus, textarea:focus { border-color: var(--accent); }
   animation: up .2s ease-out;
 }
 @keyframes up { from { transform: translateY(24px); opacity: 0; } }
+@keyframes toast-in { from { transform: translateY(-12px); opacity: 0; } }
 .grabber { flex: none; width: 40px; height: 4px; border-radius: 2px; background: var(--border); margin: 4px auto 10px; }
 .sheet-body { display: flex; flex-direction: column; gap: 12px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; }
 .sheet-body > * { flex-shrink: 0; }
@@ -225,12 +226,14 @@ input:focus, textarea:focus { border-color: var(--accent); }
 .rows dd { text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
 .toasts {
-  position: fixed; left: 0; right: 0; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 30;
+  /* Top, under the app bar: a message must never sit on the Create button. */
+  position: fixed; left: 0; right: 0; top: calc(64px + env(safe-area-inset-top)); z-index: 30;
   display: grid; justify-items: center; gap: 8px; padding: 0 var(--gutter); pointer-events: none;
 }
 .toast {
   max-width: 560px; width: 100%; padding: 12px 14px; border-radius: 12px; font-size: 14px;
-  background: var(--surface); border: 1px solid var(--line); animation: up .2s ease-out;
+  background: var(--surface); border: 1px solid var(--line); animation: toast-in .2s ease-out;
+  box-shadow: 0 6px 24px rgb(0 0 0 / .35);
 }
 .toast.error { border-color: var(--danger); }
 .toast.success { border-color: var(--accent); }
@@ -246,7 +249,6 @@ input:focus, textarea:focus { border-color: var(--accent); }
     padding: 8px var(--gutter) calc(8px + env(safe-area-inset-bottom)); background: var(--background); border-top: 1px solid var(--line);
   }
   .create-bar .primary { max-width: 560px; margin: 0 auto; display: block; min-height: 48px; }
-  .toasts { bottom: calc(72px + env(safe-area-inset-bottom)); }
   .sheet-panel { padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
   .grabber { margin: 2px auto 6px; }
   .rows > div { padding: 8px 12px; }
