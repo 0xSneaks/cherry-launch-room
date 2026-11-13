@@ -85,7 +85,27 @@ export function metadataJson(m: CleanMetadata, imageCid: string) {
 
 const PINATA = 'https://api.pinata.cloud/pinning';
 
+/** PINATA_JWT as pasted into Vercel → the bare JWT (drops quotes, a "Bearer " prefix, stray whitespace). */
+export function pinataJwt(raw: string | undefined): string {
+  let s = (raw ?? '').trim().replace(/^(['"])(.*)\1$/s, '$2').trim();
+  s = s.replace(/^bearer\s+/i, '');
+  return s.replace(/\s+/g, '');
+}
+
+/** Non-secret shape of the key, for logs only: does it look like a JWT at all? */
+export function jwtShape(jwt: string): string {
+  return `parts=${jwt.split('.').length} len=${jwt.length} ${jwt.startsWith('eyJ') ? 'jwt-like' : 'not-jwt'}`;
+}
+
+export class PinataAuthError extends Error {
+  constructor(status: number) {
+    super(`pinata ${status}`);
+    this.name = 'PinataAuthError';
+  }
+}
+
 async function pinataHash(res: Response): Promise<string> {
+  if (res.status === 401 || res.status === 403) throw new PinataAuthError(res.status);
   if (!res.ok) throw new Error(`pinata ${res.status}`);
   const body = (await res.json()) as { IpfsHash?: string };
   if (!body.IpfsHash) throw new Error('pinata: no hash');

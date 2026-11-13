@@ -36,3 +36,14 @@ describe('coin metadata', () => {
     await expect(pinMetadata(cleanMetadata(good), 'jwt', fetchImpl as unknown as typeof fetch)).rejects.toThrow(/pinata 401/);
   });
 });
+
+describe('pinataJwt', () => {
+  it('strips paste mistakes, keeps the bare token', async () => {
+    const { pinataJwt, jwtShape } = await import('./metadata');
+    expect(pinataJwt('  "Bearer eyJa.b.c"\n')).toBe('eyJa.b.c');
+    expect(pinataJwt("'eyJa.b.c'")).toBe('eyJa.b.c');
+    expect(pinataJwt('bearer eyJa.\nb.c')).toBe('eyJa.b.c');
+    expect(pinataJwt(undefined)).toBe('');
+    expect(jwtShape('eyJa.b.c')).toBe('parts=3 len=8 jwt-like');
+  });
+});

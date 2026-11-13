@@ -1,7 +1,7 @@
 // POST /api/metadata — pin the coin image + Pump.fun metadata JSON to IPFS, return { uri, image }.
 // Bundled to api/metadata.js by npm run build:api. Needs env PINATA_JWT (never echoed or logged).
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { cleanMetadata, pinMetadata } from '../src/server/metadata.js';
+import { PinataAuthError, cleanMetadata, jwtShape, pinMetadata, pinataJwt } from '../src/server/metadata.js';
 import { allow, sameOrigin } from '../src/server/guard.js';
 
 export const config = { maxDuration: 30 };
@@ -13,7 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!allow(`meta:${String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim()}`, Date.now(), 6)) {
     return res.status(429).json({ error: 'RATE_LIMITED' });
   }
-  const jwt = process.env.PINATA_JWT?.trim();
+  const jwt = pinataJwt(process.env.PINATA_JWT);
   if (!jwt) return res.status(503).json({ error: 'UPLOADS_NOT_CONFIGURED' });
   let clean;
   try {
@@ -24,6 +24,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     return res.status(200).json(await pinMetadata(clean, jwt));
   } catch (e) {
+    if (e instanceof PinataAuthError) {
+      // Key rejected by Pinata: wrong/revoked key or missing pinning scopes. Shape only, never the key.
+      console.error(`[metadata] pinata rejected PINATA_JWT (${e.message}; ${jwtShape(jwt)})`);
+      return res.status(503).json({ error: 'UPLOADS_NOT_CONFIGURED' });
+    }
     console.error('[metadata] pin failed:', (e as Error).message.slice(0, 120));
     return res.status(502).json({ error: 'UPLOAD_FAILED' });
   }
