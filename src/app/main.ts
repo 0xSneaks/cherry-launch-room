@@ -367,7 +367,12 @@ function showError(err: unknown, stage = 'app') {
   if (err instanceof FeeWalletIsSignerError || err instanceof UploadError) return toast(err.message, 'error', 6000);
   const msg = explainLaunchError(err);
   // Unknown errors and Cherry refusals carry the code, so one screenshot says which rule fired.
-  toast(msg === UNKNOWN_LAUNCH_ERROR || getBridgeError(err) ? `${msg} (ref ${errorRef(stage, err)})` : msg, 'error', 8000);
+  const be = getBridgeError(err);
+  // Cherry Wallet content refusals: show the host's own words + data so one screenshot names the instruction.
+  const host = be && ['DANGEROUS_INSTRUCTION', 'UNSTATED_ROLE'].includes(be.code)
+    ? ` Cherry says: ${`${be.message} ${Object.keys(be.data).length ? JSON.stringify(be.data) : ''}`.replace(/\s+/g, ' ').trim().slice(0, 220)}`
+    : '';
+  toast(msg === UNKNOWN_LAUNCH_ERROR || be ? `${msg} (ref ${errorRef(stage, err)})${host}` : msg, 'error', host ? 20000 : 8000);
 }
 
 function signedInWallet(): PublicKey | null {
