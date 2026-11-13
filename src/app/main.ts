@@ -8,6 +8,7 @@ import './styles.css';
 import { CherryMiniApp, getBridgeError, isInsideCherry } from '@cherrydotfun/miniapp-sdk';
 import { OnlinePumpSdk } from '@pump-fun/pump-sdk';
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, Transaction } from '@solana/web3.js';
+import { runCherryCheck } from './cherryCheck';
 import { UNKNOWN_LAUNCH_ERROR, errorRef, explainLaunchError } from '../launch/errors';
 import { SPIKE_OWNER_WALLETS } from '../spike/constants';
 import { isOwner, sessionFromResponse, type SessionState } from '../spike/session';
@@ -558,9 +559,36 @@ async function connectCherry() {
     auth = { kind: 'signed-out', reason: 'Cherry handshake failed' };
   }
   renderChip();
+  $('checkBox').hidden = !(signer && isOwner(auth, SPIKE_OWNER_WALLETS));
+}
+
+/** Owner-only: which launch step does Cherry's wallet scan refuse? Sign-only, nothing sent. */
+async function onCherryCheck() {
+  const wallet = signedInWallet();
+  if (!wallet || !signer || !feeRecipient || !isOwner(auth, SPIKE_OWNER_WALLETS)) return;
+  const btn = $<HTMLButtonElement>('checkRun');
+  const out = $('checkOut');
+  btn.disabled = true;
+  out.replaceChildren();
+  try {
+    await runCherryCheck({ connection, pump, signer, wallet, feeRecipient }, (r, i, n) => {
+      const li = document.createElement('li');
+      li.textContent = `${i + 1}/${n} ${r.name}: ${r.verdict} (${r.detail})`;
+      if (r.verdict !== 'passed') li.classList.add('warn-text');
+      out.append(li);
+    });
+    const done = document.createElement('li');
+    done.textContent = `Done ${new Date().toISOString().slice(0, 16)}Z. Screenshot this list for Claude.`;
+    out.append(done);
+  } catch (err) {
+    showError(err, 'check');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function boot() {
+  $('checkRun').onclick = () => void onCherryCheck();
   $('feeLine').textContent = FEE_LINE;
   (['name', 'ticker', 'description', 'website', 'x', 'telegram'] as const).forEach(bindText);
   input('media').addEventListener('change', () => setMedia(input('media').files?.[0] ?? null));
